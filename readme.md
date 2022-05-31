@@ -13,11 +13,11 @@ The detail is:
 
 @author: yizheng wang (王一铮), 447650327@qq.com or wang-yz19@mails.tsinghua.edu.cn 
 
-the code is revised from https://github.com/MinhNguyenIKM/dem_hyperelasticity
+The code is revised from https://github.com/MinhNguyenIKM/dem_hyperelasticity
 
 I will keep updating it, if you find any problem, please contact me without any hesitation by email. Thank you !
 
-IF it is helpful, please star me !
+If it is helpful, please star me !
 
 In future, I will expand PINN in solid mechanics. If you have any idea, we can do it together for great job!
 
