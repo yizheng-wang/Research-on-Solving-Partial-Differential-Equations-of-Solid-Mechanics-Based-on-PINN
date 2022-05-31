@@ -2,7 +2,7 @@
 
 
 
-![image-20220601002717376](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20220601002717376.png)
+
 
 This is the part code of my master thesis, including Data-driven, DEM (Deep Energy Method), and CENN (Deep Energy method with subdomains).
 
@@ -18,6 +18,7 @@ revise from https://github.com/MinhNguyenIKM/dem_hyperelasticity
 
 I will keep updating it, if you find any problem, please contact me without any hesitation by email. Thank you !
 
-IF it is helpful, please star me!
+IF it is helpful, please star me !
 
 In future, I will expand PINN in solid mechanics. If you have any idea, we can do it together for great job!
+
