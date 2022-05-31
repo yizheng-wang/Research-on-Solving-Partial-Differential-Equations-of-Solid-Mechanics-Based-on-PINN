@@ -1,6 +1,6 @@
 # Research-on-Solving-Partial-Differential-Equations-of-Solid-Mechanics-Based-on-Physics-Informed-Neural Network
 
-![CENN_graphic_abstract](.\CENN_graphic_abstract.png)
+![CENN_graphic_abstract](./CENN_graphic_abstract.png)
 
 
 
