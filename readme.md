@@ -1,6 +1,6 @@
 # Research-on-Solving-Partial-Differential-Equations-of-Solid-Mechanics-Based-on-Physics-Informed-Neural Network
 
-![CENN_graphic_abstract](D:\硕士学位论文\王一铮硕士论文\代码\GITHUB上传代码\CENN_graphic_abstract.png)
+![CENN_graphic_abstract](./CENN_graphic_abstract.png)
 
 
 
@@ -12,9 +12,8 @@ The detail is:
 3.CENN:Conservative energy method based on neural networks with subdomains (paper:https://arxiv.org/abs/2110.01359 submitted to CMAME, in major revision) 
 
 @author: yizheng wang (王一铮), 447650327@qq.com or wang-yz19@mails.tsinghua.edu.cn 
-revise from https://github.com/MinhNguyenIKM/dem_hyperelasticity
 
-
+the code is revised from https://github.com/MinhNguyenIKM/dem_hyperelasticity
 
 I will keep updating it, if you find any problem, please contact me without any hesitation by email. Thank you !
 
