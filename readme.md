@@ -9,7 +9,7 @@ The detail is:
 @author: yizheng wang (王一铮), 447650327@qq.com or wang-yz19@mails.tsinghua.edu.cn 
 revise from https://github.com/MinhNguyenIKM/dem_hyperelasticity
 
-We will keep updating it, if you find any problem, please contact me without any hesitation by email. Thank you!
+We will keep updating it, if you find any problem, please contact me without any hesitation by email. Thank you !
 
 IF it is helpful, please star me!
 
