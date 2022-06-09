@@ -7,7 +7,7 @@ import time
 from itertools import chain
 
 torch.set_default_tensor_type(torch.DoubleTensor) # 将tensor的类型变成默认的double
-torch.set_default_tensor_type(torch.cuda.DoubleTensor) # 将cuda的tensor的类型变成默认的double
+torch.set_default_tensor_1type(torch.cuda.DoubleTensor) # 将cuda的tensor的类型变成默认的double
 penalty = 1
 delta = 0.0
 train_p = 0

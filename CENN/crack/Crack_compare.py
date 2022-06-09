@@ -1414,7 +1414,7 @@ for dd in range(1):
             u_ii2 = model_p2(Xi)  + RBF(Xi)*model_h(Xi)  
             Ji = criterion(u_ii1, u_ii2)  
             
-            loss = J #+ penalty * Ji # the functional
+            loss = J # not need add interface loss because we only part the particular neural network.
             error_t = evaluate()
             optim_h.zero_grad()
             loss.backward()
@@ -1487,128 +1487,39 @@ for dd in range(1):
     print('the relative error of data is %f' % error_data_t.data)  
     print('the relative error of cpinn is %f' % error_pinn_t.data)   
     print('the relative error of cenn is %f' % error_energy_t.data)   
-        
-    #fig = plt.figure(dpi=1000, figsize=(22, 5.5)) #接下来画损失函数的三种方法的比较以及相对误差的比较
-    plt.figure(dpi=1000, figsize=(7.3, 5.5)) # cpinn和data driven的损失函数对比
+#%%        
+    fig = plt.figure(dpi=1000, figsize=(22, 6.5)) #接下来画损失函数的三种方法的比较以及相对误差的比较
+    plt.subplot(1, 3, 1) # cpinn和data driven的损失函数对比
     plt.yscale('log')
     plt.plot(loss_array_data)
     plt.plot(loss1_array_pinn, '--')
     plt.plot(loss2_array_pinn, '-.')
-    plt.legend(['data_driven', 'cPINN子域1', 'cPINN子域2'], loc = 'upper right')
-    plt.xlabel('迭代数')
-    plt.ylabel('损失函数')
-    #plt.title('cpinn and data_driven', fontsize = 20) 
+    plt.legend(['Data-driven', 'SUB-CPINN-1', 'SUB-CPINN-2'], loc = 'upper right', fontsize = 15)
+    plt.xlabel('Iteration', fontsize = 15)
+    plt.ylabel('Loss', fontsize = 15)
+    plt.title('CPINN and data-driven', fontsize = 20) 
     settick()
-    plt.show()
     
-    plt.figure(dpi=1000, figsize=(7.3, 5.5)) # cenn损失函数，这里没有对比，但是有解析积分进行对比，画出精确积分的横线
+    plt.subplot(1, 3, 2) # cenn损失函数，这里没有对比，但是有解析积分进行对比，画出精确积分的横线
     plt.yscale('log')
     plt.grid(axis='y')
     plt.axhline(y=0.8814, color='r', ls = '--') # 画出精确解
     plt.plot(loss_array_energy)
-    plt.legend(['精确积分','CENN'], loc = 'upper right')
-    plt.xlabel('迭代数')
-    plt.ylabel('损失函数')
-    #plt.title('cenn', fontsize = 20) 
-    settick()
-    plt.show()
+    plt.legend(['Exact','Cenn'], loc = 'upper right', fontsize = 15)
+    plt.xlabel('Iteration', fontsize = 15)
+    plt.ylabel('Loss', fontsize = 15)
+    plt.title('CENN', fontsize = 20) 
     
-    
-    plt.figure(dpi=1000, figsize=(7.3, 5.5)) # 三种方法的整体误差比较
+    plt.subplot(1, 3, 3) # 三种方法的整体误差比较
     plt.yscale('log')
     plt.plot(error_array_data)
     plt.plot(error_array_pinn, '--')
     plt.plot(error_array_energy, '-.')
-    plt.legend(['Data driven', 'cPINN', 'CENN'], loc = 'upper right')
-    plt.xlabel('迭代数')
-    plt.ylabel('误差')
-    #plt.title('error comparision', fontsize = 20) 
-    #plt.savefig('../../图片/裂纹/crack_compare_loss_error/crack_compare_loss_error%i.pdf' % dd, bbox_inches = 'tight')
+    plt.legend(['Data-driven', 'CPINN', 'CENN'], loc = 'upper right', fontsize = 15)
+    plt.xlabel('Iteration', fontsize = 15)
+    plt.ylabel('Error', fontsize = 15)
+    plt.title('Error Comparision', fontsize = 20) 
     settick()
+    plt.savefig('picture/crack_compare_loss_error%i.pdf' % dd, bbox_inches = 'tight')
     plt.show()
     error_total[dd] = {'data':error_data_t.data.cpu(), 'cpinn':error_pinn_t.data.cpu() , 'cenn': error_energy_t.data.cpu()}
-    # # %%
-    # fig = plt.figure(dpi=1000, figsize=(22, 22))
-    # fig.subplots_adjust(top=0.9)
-    # plt.figtext(0.22, 0.92, 'data driven', va='center', ha='center', size=30, weight='bold')
-    # plt.figtext(0.50, 0.92, 'CPINN', va='center', ha='center', size=30, weight='bold')
-    # plt.figtext(0.77, 0.92, 'CENN', va='center', ha='center', size=30, weight='bold')
-    # plt.subplot(4, 3, 1)
-    # #u_pred_data = u_pred.detach().numpy()
-    # h11 = plt.contourf(x, y, u_pred_data, levels=100 ,cmap = 'jet')
-    # plt.title(' prediction', fontsize = 20) 
-    # plt.colorbar(h11)
-    # plt.subplot(4, 3, 4)
-    # h21 = plt.contourf(x, y, error_data.detach().numpy(), levels=100 ,cmap = 'jet')
-    # plt.title('absolute error', fontsize = 20) 
-    # plt.colorbar(h21)
-    # plt.subplot(4, 3, 7)
-    # #loss_array_data = np.array(loss_array)
-    # #loss_array_data = loss_array_data[loss_array_data<50]
-    # plt.yscale('log')
-    # plt.plot(loss_array_data)
-    # plt.xlabel('the iteration')
-    # plt.ylabel('loss')
-    # plt.title('loss evolution', fontsize = 20) 
-    # plt.subplot(4, 3, 10)
-    # #error_array_data = np.array(error_array)
-    # #error_array_data = error_array_data[error_array_data<1]
-    # plt.yscale('log')
-    # plt.plot(error_array_data)
-    # plt.xlabel('the iteration')
-    # plt.ylabel('error')
-    # plt.title('relative total error evolution', fontsize = 20) 
-    
-    # plt.subplot(4, 3, 2)
-    # h2 = plt.contourf(x, y, u_pred_pinn.detach().numpy(), levels=100 ,cmap = 'jet')
-    # plt.colorbar(h2)
-    
-    # plt.subplot(4, 3, 5)
-    # h4 = plt.contourf(x, y, error_pinn.detach().numpy(), levels=100 ,cmap = 'jet')
-    # plt.colorbar(h4)
-    
-    # plt.subplot(4, 3, 8)
-    # #loss1_array_pinn = np.array(loss1_array)
-    # #loss1_array_pinn = loss1_array_pinn[loss1_array_pinn<50]
-    # plt.yscale('log')
-    # plt.plot(loss1_array_pinn)
-    # #loss2_array_pinn = np.array(loss2_array)
-    # #loss2_array_pinn = loss2_array_pinn[loss2_array_pinn<50]
-    # plt.plot(loss2_array_pinn)
-    # plt.legend(['particularNN_1', 'particularNN_2'])
-    # plt.xlabel('the iteration')
-    # plt.ylabel('loss')
-     
-    # plt.subplot(4, 3, 11)
-    # #error_array_pinn = np.array(error_array)
-    # #error_array_pinn = error_array_pinn[error_array_pinn<1]
-    # plt.yscale('log')
-    # plt.plot(error_array_pinn)
-    # plt.xlabel('the iteration')
-    # plt.ylabel('error')
-    
-    # plt.subplot(4, 3, 3)
-    # h2 = plt.contourf(x, y, u_pred_energy.detach().numpy(), levels=100 ,cmap = 'jet')
-    # plt.colorbar(h2)
-    # plt.subplot(4, 3, 6)
-    # h4 = plt.contourf(x, y, error_energy.detach().numpy(), levels=100 ,cmap = 'jet')
-    # plt.colorbar(h4)
-    # plt.subplot(4, 3, 9)
-    # #loss_array_energy  = np.array(loss_array)
-    # #loss_array_energy  = loss_array_energy [loss_array_energy <50]
-    # plt.yscale('log')
-    # plt.plot(loss_array_energy )
-    # plt.xlabel('the iteration')
-    # plt.ylabel('loss')
-    # plt.subplot(4, 3, 12)
-    # #error_array_energy  = np.array(error_array)
-    # #error_array_energy  = error_array_energy[error_array_energy <1]
-    # plt.yscale('log')
-    # plt.plot(error_array_energy )
-    # plt.xlabel('the iteration')
-    # plt.ylabel('error')
-    
-    
-    # #plt.suptitle("energy")
-    # plt.savefig('./picture/crack_compare.pdf', bbox_inches = 'tight')
-    # plt.show()

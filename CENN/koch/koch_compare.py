@@ -16,6 +16,22 @@ from matplotlib.pyplot import MultipleLocator
 import matplotlib as mpl
 mpl.rcParams['font.sans-serif']=['SimHei'] # 为了显示中文matplotlib
 
+def settick():
+    '''
+    对刻度字体进行设置，让上标的符号显示正常
+    :return: None
+    '''
+    ax1 = plt.gca()  # 获取当前图像的坐标轴
+ 
+    # 更改坐标轴字体，避免出现指数为负的情况
+    tick_font = mpl.font_manager.FontProperties(family='DejaVu Sans', size=7.0)
+    for labelx  in ax1.get_xticklabels():
+        labelx.set_fontproperties(tick_font) #设置 x轴刻度字体
+    for labely in ax1.get_yticklabels():
+        labely.set_fontproperties(tick_font) #设置 y轴刻度字体
+    ax1.xaxis.set_major_locator(mpl.ticker.MaxNLocator(integer=True))  # x轴刻度设置为整数
+    plt.tight_layout()  
+    
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -1417,33 +1433,29 @@ for dd in range(102,103):
      
     # 首先画损失函数以及误差图
 # %%        
-    #fig = plt.figure(dpi=1000, figsize=(12, 11)) #接下来画损失函数的三种方法的比较以及相对误差的比较
-    plt.figure(dpi=1000, figsize=(6, 5.5))
+    fig = plt.figure(dpi=1000, figsize=(12, 11)) #接下来画损失函数的三种方法的比较以及相对误差的比较
+    plt.subplot(2, 2, 1) # cpinn的损失函数
     plt.yscale('log')
     plt.plot(loss1_array_cpinn, '--')
     plt.plot(loss2_array_cpinn, '-.')
-    plt.legend([ '网络1', '网络2'], loc = 'upper right')
-    plt.xlabel('迭代数')
-    plt.ylabel('损失函数')
-    #plt.title('CPINN', fontsize = 10) 
-    plt.savefig('./pic/CPINN_loss_%i.png' % dd)
-    plt.show()
-    
-    plt.figure(dpi=1000, figsize=(6, 5.5)) # 能量法以及cenn的损失函数，比较J1，需要画一条精确的线
+    plt.legend([ 'SUB-CPINN-1', 'SUB-CPINN_2'], loc = 'upper right')
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.title('CPINN', fontsize = 10) 
+    settick()
+    plt.subplot(2, 2, 2) # 能量法以及cenn的损失函数，比较J1，需要画一条精确的线
     #plt.grid(axis='y')
     exactJ1=1.10
     plt.axhline(y=1.0, color='r', ls = ':')
     plt.plot(loss1_array_energy/exactJ1, ls = '--')
     plt.plot(loss1_array_cenn/exactJ1, ls = '-.')
     plt.ylim(bottom=0.5)
-    plt.legend(['精确解 ', 'DEM', 'CENN'], loc = 'upper right')
-    plt.xlabel('迭代数')
-    plt.ylabel('损失函数')
-    #plt.title('DEM and CENN internal', fontsize = 10) 
-    plt.savefig('./pic/DEM_CENN_loss_%i.png' % dd)
-    plt.show()
-    
-    plt.figure(dpi=1000, figsize=(6, 5.5))  # 能量法以及cenn的损失函数，比较J2，需要画一条精确的线
+    plt.legend(['Exact', 'DEM', 'CENN'], loc = 'upper right')
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.title('DEM and CENN internal', fontsize = 10) 
+    settick()
+    plt.subplot(2, 2, 3)  # 能量法以及cenn的损失函数，比较J2，需要画一条精确的线
     #plt.grid(axis='y')
     exactJ2 = 436.45
     plt.axhline(y=1.0, color='r', ls = ':') # 画出精确解
@@ -1454,23 +1466,22 @@ for dd in range(102,103):
     ax.yaxis.set_major_locator(y_major_locator)
     plt.ylim(bottom=0.0, top = 2.0)
     plt.legend(['Exact', 'DEM', 'CENN'], loc = 'upper right')
-    plt.xlabel('迭代数')
-    plt.ylabel('损失函数')
-    #plt.title('DEM and CENN external', fontsize = 10) 
-    plt.savefig('./DEM_CENN_external_%i.png' % dd)
-    plt.show()
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.title('DEM and CENN external', fontsize = 10) 
+    settick()
     
-    plt.figure(dpi=1000, figsize=(6, 5.5))
+    plt.subplot(2, 2, 4)
     plt.yscale('log')
     plt.plot(error_array_cpinn)
     plt.plot(error_array_energy, '--')
     plt.plot(error_array_cenn, '-.')
     plt.legend(['CPINN', 'DEM', 'CENN'], loc = 'upper right')
-    plt.xlabel('迭代数')
-    plt.ylabel('${\mathcal{L}_2}$ 误差')
-    #plt.title('Error comparision', fontsize = 10) 
-    plt.savefig('./error_%i.png' % dd)
-    #plt.savefig('../../picture/koch/审批/koch_compare_loss_error%i.pdf' % dd, bbox_inches = 'tight')
+    plt.xlabel('Iteration')
+    plt.ylabel('${\mathcal{L}_2}$ Error')
+    plt.title('Error comparision', fontsize = 10) 
+    settick()
+    plt.savefig('./pic/koch_compare_loss_error.pdf' , bbox_inches = 'tight')
     plt.show()
     
     

@@ -3,13 +3,13 @@
 """
 import sys
 sys.path.insert(0, '/home/sg/SeaDrive/My Libraries/开题报告/PINN最小能量原理/dem_hyperelasticity-master') # add路径
-from dem_hyperelasticity.plate_hole import Plate_hole_define_structure as des
-from dem_hyperelasticity.MultiLayerNet import *
-from dem_hyperelasticity import EnergyModel as md
-from dem_hyperelasticity import Utility as util
-from dem_hyperelasticity.plate_hole import config as cf
-from dem_hyperelasticity.IntegrationLoss import *
-from dem_hyperelasticity.EnergyModel import *
+from DEM.plate_hole import Plate_hole_define_structure as des
+from DEM.MultiLayerNet import *
+from DEM import EnergyModel as md
+from DEM import Utility as util
+from DEM.plate_hole import config as cf
+from DEM.IntegrationLoss import *
+from DEM.EnergyModel import *
 import numpy as np
 import time
 import torch

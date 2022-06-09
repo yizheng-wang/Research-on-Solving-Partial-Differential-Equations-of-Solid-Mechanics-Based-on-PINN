@@ -59,7 +59,7 @@ domxy2 = np.array([[0., 0.],[0, 5*3**0.5],[7.5, 2.5*3**0.5],\
 domxy3 = domxy2 * 16/9
 domxy4 = domxy2 * 0.5
 domxy5 = domxy2 * 1.5
-domxy6 = np.array([[-10/3, -70/9*3**0.5], [10/3, -70/9*3**0.5]])
+domxy6 = np.array([[-10/3, -70/9*3**0.5], [10/3, -70/9*3**0.5], [20/6, 20/6*3**0.5], [-20/6, 20/6*3**0.5]])
 domxy7 = np.concatenate((np.dot(domxy6, Q), np.dot(domxy6, Q@Q), np.dot(domxy6, Q@Q@Q), np.dot(domxy6, Q@Q@Q@Q), np.dot(domxy6, Q@Q@Q@Q@Q)))
 domxy = np.concatenate((domxy1, domxy2, domxy3, domxy4, domxy5, domxy6, domxy7))/10 # 本来横跨是30，所以要除一个比例
 domxy = np.unique(domxy, axis=0)
@@ -109,8 +109,8 @@ plt.scatter(d_total[:, 0], d_total[:, 1], s=0.2)
 ax = plt.gca()
 ax.set_aspect(1)
 #plt.title('the RBF points')
-plt.xlabel('x')
-plt.ylabel('y')
+#plt.xlabel('x')
+#plt.ylabel('y')
 
 
 # plt.subplot(1, 2, 2) # RBF距离函数没法用matplotlib处理，所以我们转化为VTK处理

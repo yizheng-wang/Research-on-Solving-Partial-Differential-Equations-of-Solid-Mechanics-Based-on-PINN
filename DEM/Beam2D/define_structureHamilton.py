@@ -1,7 +1,7 @@
 import sys
 sys.path.insert(0, '/home/sg/SeaDrive/My Libraries/开题报告/超材料的PINN/dem_hyperelasticity-master') # add路径
-from dem_hyperelasticity.config import *
-from dem_hyperelasticity.Beam2D.config import *
+from DEM.config import *
+from DEM.Beam2D.config import *
 
 
 def setup_domain(): # 2D悬臂梁撒点

@@ -1,8 +1,8 @@
-from dem_hyperelasticity.importlib import *
-from dem_hyperelasticity import Utility as util
-from dem_hyperelasticity.IntegrationLoss import *
-from dem_hyperelasticity.MultiLayerNet import *
-from dem_hyperelasticity.EnergyModel import *
+from DEM.importlib import *
+from DEM import Utility as util
+from DEM.IntegrationLoss import *
+from DEM.MultiLayerNet import *
+from DEM.EnergyModel import *
 
 
 class DeepEnergyMethod:
@@ -222,7 +222,3 @@ class DeepEnergyMethod:
             loss += torch.sum((tinput[:, j] - target[:, j]) ** 2) / tinput[:, j].data.nelement()
         return loss
 
-
-if __name__ == '__main__':
-    from Hyperelasticity import data_testing
-    data = data_testing.get_data()

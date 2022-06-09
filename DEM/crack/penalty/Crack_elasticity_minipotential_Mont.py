@@ -3,13 +3,13 @@
 """
 import sys
 sys.path.insert(0, '/home/sg/SeaDrive/My Libraries/开题报告/超材料的PINN/dem_hyperelasticity-master') # add路径
-from dem_hyperelasticity.crack import define_structure as des
-from dem_hyperelasticity.MultiLayerNet import *
-from dem_hyperelasticity import EnergyModel as md
-from dem_hyperelasticity import Utility as util
-from dem_hyperelasticity.crack import config as cf
-from dem_hyperelasticity.IntegrationLoss import *
-from dem_hyperelasticity.EnergyModel import *
+from DEM.crack import define_structure as des
+from DEM.MultiLayerNet import *
+from DEM import EnergyModel as md
+from DEM import Utility as util
+from DEM.crack import config as cf
+from DEM.IntegrationLoss import *
+from DEM.EnergyModel import *
 import numpy as np
 import time
 import torch

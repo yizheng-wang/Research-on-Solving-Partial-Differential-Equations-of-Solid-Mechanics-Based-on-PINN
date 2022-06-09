@@ -106,9 +106,10 @@ dis_RBF = RBF(domxy_t) # get the distance result by RBF
 
 # get average error of the RBF network
 dis_RBF_test = RBF(torch.from_numpy(points_d_test)).numpy()
-L2_rbf = np.mean(dis_RBF_test)
+L2_rbf = np.sqrt(np.mean(dis_RBF_test**2))
 print('L2 error of the RBF is '+str(L2_rbf))
-
+MAE_rbf = np.mean(np.abs(dis_RBF_test))
+print('MAE error of the RBF is '+str(MAE_rbf))
 # =============================================================================
 #  use neural network to approximate distance function
 # =============================================================================
@@ -168,18 +169,18 @@ criterion = torch.nn.MSELoss()
 optim = torch.optim.Adam(params=distance_nn.parameters(), lr= 0.001)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[1000, 3000, 5000], gamma = 0.1)
 loss_array = []
-L2_NN_array = [100]
+MAE_NN_array = [100]
 d_total_nn = torch.from_numpy(d_total).cuda()
 label_nn = torch.from_numpy(b).cuda()
 epoch = 0
 start = time.time()
-while L2_NN_array[-1] > L2_rbf:
+while MAE_NN_array[-1] > MAE_rbf:
     epoch = epoch + 1
     if epoch%10000 ==0: # test the average error on the essential boundary  every 10000 epochs.
         dis_NN_test = distance_nn(torch.from_numpy(points_d_test).cuda()).data.cpu().numpy()
-        L2_NN = np.mean(dis_NN_test)
-        L2_NN_array.append(L2_NN)
-        print('L2 error of the NN is '+str(L2_NN))
+        MAE_NN = np.mean(dis_NN_test)
+        MAE_NN_array.append(MAE_NN)
+        print('L2 error of the NN is '+str(MAE_NN))
     def closure():  
         pred_RBF_nn = distance_nn(d_total_nn) # predict the boundary condition
         loss = criterion(pred_RBF_nn, label_nn) 
