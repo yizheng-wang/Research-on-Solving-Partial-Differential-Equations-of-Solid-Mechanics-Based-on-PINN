@@ -63,9 +63,9 @@ def train_data(Nb, Nf):
     xc1 = np.array([[-1., 1.], [1., 1.], [1., -1.], [-1., -1.]]) # add the corner point of rectangle
     xc2 = np.array([[-1., 1.], [1., 1.], [1., -1.], [-1., -1.]])
     xc3 = np.array([[-1., 1.], [1., 1.], [1., -1.], [-1., -1.]])
-    Xb = np.concatenate((xu, xd, xl, xr, xcrack, xc1, xc2, xc3)) # 上下左右四个边界组装起来
+    Xb = np.concatenate((xu, xd, xl, xr, xcrack, xc1, xc2, xc3)) # get the boundary points
 
-    Xb = torch.tensor(Xb, device='cuda') # 转化成tensor
+    Xb = torch.tensor(Xb, device='cuda') # change to tensor
     # generate the points in domain
     Xf = torch.rand(Nf, 2)*2-1
     
@@ -301,7 +301,7 @@ def evaluate():
 # step 1: get the boundary train data and target for boundary condition
 
 if train_p == 1:
-    model_p1 = particular(2, 10, 1).cuda() # 定义两个特解，这是因为在裂纹处是间断值
+    model_p1 = particular(2, 10, 1).cuda() # define two particular NN, since it is discontinuous in the crack
     model_p2 = particular(2, 10, 1).cuda()
     tol_p = 0.0001
     loss_bn = 100
@@ -319,8 +319,8 @@ if train_p == 1:
         if epoch_b%10 == 0:
             Xb, Xf1, Xf2 = train_data(256, 4096)
             Xi = interface(1000)
-            Xb1 = Xb[Xb[:, 1]>=0] # 上边界点
-            Xb2 = Xb[Xb[:, 1]<=0] # 下边界点
+            Xb1 = Xb[Xb[:, 1]>=0] # up region boundary
+            Xb2 = Xb[Xb[:, 1]<=0] # down region boundary
             target_b1 = torch.sqrt(torch.sqrt(Xb1[:,0]**2+Xb1[:, 1]**2))*torch.sqrt((1-Xb1[:,0]/torch.sqrt(Xb1[:,0]**2+Xb1[:,1]**2))/2)
             target_b1 = target_b1.unsqueeze(1)
             target_b2 = -torch.sqrt(torch.sqrt(Xb2[:,0]**2+Xb2[:, 1]**2))*torch.sqrt((1-Xb2[:,0]/torch.sqrt(Xb2[:,0]**2+Xb2[:,1]**2))/2)
@@ -331,14 +331,14 @@ if train_p == 1:
             loss_b1 = criterion(pred_b1, target_b1)  
             pred_b2 = model_p2(Xb2) # predict the boundary condition
             loss_b2 = criterion(pred_b2, target_b2) 
-            loss_b = loss_b1 + loss_b2# 边界的损失函数
-            # 求交界面的损失函数，因为这里是两个特解网络
+            loss_b = loss_b1 + loss_b2# the loss function of boundary
+            # obtain the loss on the interface, since there are two particular network
             pred_bi1 = model_p1(Xi) # predict the boundary condition
             pred_bi2 = model_p2(Xi) # predict the boundary condition
             loss_bi = criterion(pred_bi1, pred_bi2)             
             
             optimp.zero_grad()
-            loss_bn = loss_b + loss_bi # 本质边界和交界面损失的总和
+            loss_bn = loss_b + loss_bi # the loss function including the interface and boundary loss
             loss_bn.backward()
             loss_b_array.append(loss_b.data)
             loss_b1_array.append(loss_b1.data)
@@ -365,11 +365,11 @@ def RBF(x):
     return y
 
 # obtain 4 boundary points
-n_d = 10 # 一条边上的本质边界条件的配点数
+n_d = 10 # the number of the points on each essential boundary of the crack
 n_dom = 5
 gama = 0.5
-ep = np.linspace(-1, 1, n_d) # 从-1到1均匀配点
-# 获得4条边界上的点
+ep = np.linspace(-1, 1, n_d) # uniform from -1 to 1
+# obtain the essential points of the rectangle boundary
 ep1 = np.zeros((n_d, 2))
 ep1[:, 0], ep1[:, 1] = ep, 1
 ep2 = np.zeros((n_d, 2))
@@ -380,9 +380,9 @@ ep4 = np.zeros((n_d, 2))
 ep4[:, 0], ep4[:, 1] = 1, ep
 ep5 = np.zeros((n_d, 2))
 ep5[:, 0], ep5[:, 1] = ep/2-0.5, 0
-points_d = np.concatenate((ep1, ep2, ep3, ep4, ep5)) # 获得本质边界条件点
-points_d = np.unique(points_d, axis=0) # 去除重复点
-kdt = KDTree(points_d, metric='euclidean') # 将本质边界条件封装成一个对象
+points_d = np.concatenate((ep1, ep2, ep3, ep4, ep5)) # get all the boundary points
+points_d = np.unique(points_d, axis=0) # delete the same points
+kdt = KDTree(points_d, metric='euclidean') # make the essential boundary to a object
 
 
 domx = np.linspace(-1, 1, n_dom)[1:-1]
@@ -393,10 +393,10 @@ domxy = domxy[(domxy[:, 1]!=0)|(domxy[:, 0]>0)]
 #domxy = np.unique(domxy, axis=0)
 d_dir, _ = kdt.query(points_d, k=1, return_distance = True)
 d_dom, _ = kdt.query(domxy, k=1, return_distance = True)
-# 将本质边界条件和内部点拼接起来
+# concatenate the essential and domain points
 d_total = np.concatenate((points_d, domxy))
 #d_total = np.unique(d_total, axis=0)
-# 获得距离矩阵，这是获得K（用来求RBF的权重矩阵的关键）的前提
+# obtain K matrix after get the distance function of the points
 dx = d_total[:, 0][:, np.newaxis] - d_total[:, 0][np.newaxis, :]
 dy = d_total[:, 1][:, np.newaxis] - d_total[:, 1][np.newaxis, :]
 R2 = np.sqrt(dx**2+dy**2)
@@ -406,12 +406,12 @@ w = np.dot(np.linalg.inv(K),b)
 
 
 
-n_test = 21 # 获得测试点 n_test**2个
+n_test = 21 # get the test points: n_test**2
 domx_t = np.linspace(-1, 1, n_test)
 domy_t = np.linspace(-1, 1, n_test)
 domx_t, domy_t = np.meshgrid(domx_t, domy_t)
 domxy_t = np.stack((domx_t.flatten(), domy_t.flatten()), 1)
-domxy_t= torch.from_numpy(domxy_t).requires_grad_(True).cuda() # 获得了两列的测试点，放入RBF中，这是为了和其他神经网络结构保持一致
+domxy_t= torch.from_numpy(domxy_t).requires_grad_(True).cuda() 
 
 dis_RBF = RBF(domxy_t)
 # plot the contourf of distance of the RBF
@@ -755,10 +755,10 @@ print('the relative error of cenn with Rowdy3 is %f' % error_energy_t_Rowdy3.dat
 
 #  plotting for comparison among CENN, CENN adapive, CENN Rowdy
 #%%
-fig = plt.figure(dpi=1000, figsize=(15, 6.5)) #接下来画损失函数的三种方法的比较以及相对误差的比较
+fig = plt.figure(dpi=1000, figsize=(15, 6.5)) #plot the loss and L2 relative error comparing 3 method decribed above
 plt.subplot(1, 2, 1)
 plt.yscale('log')
-plt.axhline(y=0.8814, color='r', ls = '--') # 画出精确解
+plt.axhline(y=0.8814, color='r', ls = '--') # plot the exact solution.
 plt.plot(loss_array_energy)
 plt.plot(loss_array_energy_l, ':')
 plt.plot(loss_array_energy_Rowdy3, '-.')
