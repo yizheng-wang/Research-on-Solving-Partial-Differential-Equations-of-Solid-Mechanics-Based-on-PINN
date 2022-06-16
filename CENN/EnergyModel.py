@@ -4,33 +4,6 @@ from config import *
 class EnergyModel:
     # ---------------------------------------------------------------------------------------------------------------------------
     def __init__(self, energy, dim, E=None, nu=None, param_c1=None, param_c2=None, param_c=None, rou = 1000):
-        """
-        
-
-        Parameters
-        ----------
-        energy : TYPE
-            DESCRIPTION.
-        dim : TYPE
-            DESCRIPTION.
-        E : TYPE, optional
-            DESCRIPTION. The default is None.
-        nu : TYPE, optional
-            DESCRIPTION. The default is None.
-        param_c1 : TYPE, optional
-            DESCRIPTION. The default is None.
-        param_c2 : TYPE, optional
-            DESCRIPTION. The default is None.
-        param_c : TYPE, optional
-            DESCRIPTION. The default is None.
-        rou : float, optional
-            The density of the material. The default is 1000.
-
-        Returns
-        -------
-        None.
-
-        """
         self.type = energy
         self.dim = dim
         if self.type == 'neohookean':
@@ -48,7 +21,7 @@ class EnergyModel:
                 self.D12_mat = E*nu/(1-nu**2)
                 self.D21_mat = E*nu/(1-nu**2)
                 self.D33_mat = E/(2*(1+nu))
-            if dim ==3: # 以后在三位问题再进行定义
+            if dim ==3: # 3D problems defined in the future
                 pass
         if self.type == 'elasticityMP':
             if dim == 2:
@@ -57,14 +30,14 @@ class EnergyModel:
                 self.D12_mat = E*nu/(1-nu**2)
                 self.D21_mat = E*nu/(1-nu**2)
                 self.D33_mat = E/(2*(1+nu))
-            if dim ==3: # 以后在三位问题再进行定义
+            if dim ==3: # 3D problems defined in the future
                 pass
         if self.type == 'elasticityMCP':
             if dim == 2:
                 self.E = E
                 self.nu = nu
                 self.mu = E / (2 * (1 + nu))
-            if dim ==3: # 以后在三位问题再进行定义
+            if dim ==3: # 3D problems defined in the future
                 pass
         if self.type == 'elasticityHam':
             if dim == 2:
@@ -74,17 +47,18 @@ class EnergyModel:
                 self.D21_mat = E*nu/(1-nu**2)
                 self.D33_mat = E/(2*(1+nu))
                 self.rou = rou
-            if dim ==3: # 以后在三位问题再进行定义
+            if dim ==3: # 3D problems defined in the future
                 pass
-    def getStoredEnergy(self, u, x):
+    def getStoredEnergy(self, u, x): # get the energy density from the displacement and the coordinate
         if self.type == 'neohookean':
             if self.dim == 2:
                 return self.NeoHookean2D(u, x)
             if self.dim == 3:
-                return self.NeoHookean3D(u, x) # 将每一个点位移以及位置输入到这个函数中，获得每一个点的应变能密度
+                return self.NeoHookean3D(u, x) 
+            
         if self.type == 'mooneyrivlin':
             if self.dim == 2:
-                return self.MooneyRivlin2D(u, x) # 确定材料的类型
+                return self.MooneyRivlin2D(u, x) 
             if self.dim == 3:
                 return self.MooneyRivlin3D(u, x)
         if self.type == 'elasticityHW':
@@ -92,29 +66,29 @@ class EnergyModel:
                 return self.Elasticity2DHW(u, x)
             if self.dim == 3:
                 return self.Elasticity3DHW(u, x)
-        if self.type == 'elasticityMP': # 最小势能原理，线弹性
+        if self.type == 'elasticityMP': # principle of minimum potential energy
             if self.dim == 2:
                 return self.Elasticity2DMP(u, x)
             if self.dim == 3:
                 return self.Elasticity3DMP(u, x)
-        if self.type == 'elasticityMCP': # 最小余能原理，线弹性
+        if self.type == 'elasticityMCP': # principle of minimum complementary energy
             if self.dim == 2:
-                return self.Elasticity2DMCP(u, x) # 这里的u实际上是Ariy应力函数
+                return self.Elasticity2DMCP(u, x) # u is Airy function
             if self.dim == 3:
                 return self.Elasticity3DMCP(u, x)
-        if self.type == 'elasticityHam': # 最小势能原理，线弹性
+        if self.type == 'elasticityHam': # Hamilton in the future
             if self.dim == 2:
                 return self.Elasticity2DMP(u, x)
             if self.dim == 3:
                 return self.Elasticity3DMP(u, x)
-        if self.type == 'crack_third': # 第三类裂纹问题
+        if self.type == 'crack_third': # Laplacian equation (3 type of crack)
             return self.crack_third(u, x)
     def getkineticEnergy(self, ust, x):
         duxdxy = grad(ust[:, 0].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
         duydxy = grad(ust[:, 1].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]        
-        dudt = duxdxy[:, 2].unsqueeze(1) # 获取x方向的速度
-        dvdt = duydxy[:, 2].unsqueeze(1) # 获取y方向的速度
-        # 获取动能密度
+        dudt = duxdxy[:, 2].unsqueeze(1) # v in the x direction
+        dvdt = duydxy[:, 2].unsqueeze(1) # v in the y direction
+        # get the kinematic density
         kineticDensity = 0.5 * self.rou * (dudt**2 + dvdt**2) 
         return kineticDensity
         
@@ -136,8 +110,8 @@ class EnergyModel:
         Essential Energy in functional of hw.
 
         '''
-        # 将输入进行物理意义赋予，一列一列进行分析
-        if self.dim == 2: # 检查了以下，这是对的
+        #Input is physically meaningful and analyzed column by column
+        if self.dim == 2:#Checked the following, it's right
             u_pred = ust[:, 0].unsqueeze(1)
             v_pred = ust[:, 1].unsqueeze(1)
             u_pre = uv_pre[:, 0].unsqueeze(1)
@@ -147,16 +121,17 @@ class EnergyModel:
             t12 = ust[:, 7].unsqueeze(1)
             normx = normal[:, 0].unsqueeze(1)
             normy = normal[:, 1].unsqueeze(1)
-            # 获得预测位移以及给定位移的差值
+            #Obtain the difference between the predicted displacement and the given displacement
             u_loss = u_pred - u_pre
             v_loss = v_pred - v_pre
             stress_vectorx = t11 * normx + t12 * normy
             stress_vectory = t12 * normx + t22 * normy
-            # 输出应力矢量和预测位移以及给定位移的点积
+            #Output the dot product of the stress vector and the predicted displacement and the given displacement
             EssentialEnergy = u_loss * stress_vectorx + v_loss * stress_vectory
             return EssentialEnergy
-        if self.dim == 3 : # 三维以后再定义
-            pass 
+        if self.dim == 3 :#3D will be defined later
+            pass
+
     def MooneyRivlin3D(self, u, x):
         duxdxyz = grad(u[:, 0].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
         duydxyz = grad(u[:, 1].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
@@ -217,7 +192,7 @@ class EnergyModel:
         duxdxyz = grad(u[:, 0].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
         duydxyz = grad(u[:, 1].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
         duzdxyz = grad(u[:, 2].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
-        Fxx = duxdxyz[:, 0].unsqueeze(1) + 1 # 将位移梯度变成F
+        Fxx = duxdxyz[:, 0]. Unsqueeze (1) + 1 #will shift gradient into F
         Fxy = duxdxyz[:, 1].unsqueeze(1) + 0
         Fxz = duxdxyz[:, 2].unsqueeze(1) + 0
         Fyx = duydxyz[:, 0].unsqueeze(1) + 0
@@ -226,10 +201,10 @@ class EnergyModel:
         Fzx = duzdxyz[:, 0].unsqueeze(1) + 0
         Fzy = duzdxyz[:, 1].unsqueeze(1) + 0
         Fzz = duzdxyz[:, 2].unsqueeze(1) + 1
-        detF = Fxx * (Fyy * Fzz - Fyz * Fzy) - Fxy * (Fyx * Fzz - Fyz * Fzx) + Fxz * (Fyx * Fzy - Fyy * Fzx) # 自己手写行列式
-        trC = Fxx ** 2 + Fxy ** 2 + Fxz ** 2 + Fyx ** 2 + Fyy ** 2 + Fyz ** 2 + Fzx ** 2 + Fzy ** 2 + Fzz ** 2 # 格林张量的迹
-        strainEnergy = 0.5 * self.lam * (torch.log(detF) * torch.log(detF)) - self.mu * torch.log(detF) + 0.5 * self.mu * (trC - 3) # 定义neohookean的能量密度
-        return strainEnergy # 返回的是一个二维的列向量，包含了所有点的应变能密度
+        detF = Fxx * (Fyy * Fzz - Fyz * Fzy) - Fxy * (Fyx * Fzz - Fyz * Fzx) + Fxz * (Fyx * Fzy -Fyy * Fzx) #self-written determinant
+        trC = Fxx ** 2 + Fxy ** 2 + Fxz ** 2 + Fyx ** 2 + Fyy ** 2 + Fyz ** 2 + Fzx ** 2 + Fzy ** 2 + Fzz ** 2 #green tensor
+        strainEnergy = 0.5 * self.lam * (torch.log (detF) * torch.log (detF)) -self.mu * torch.log (detF) + 0.5 * self.mu * (trC - 3) #Defines the energy density of the neocook
+        return strainEnergy #Returns a two-dimensional column vector containing the strain energy densities of all points
 
     # ---------------------------------------------------------------------------------------
     # Purpose: calculate Neo-Hookean potential energy in 2D
@@ -258,21 +233,20 @@ class EnergyModel:
         txx = ust[:, 5].unsqueeze(1)
         tyy = ust[:, 6].unsqueeze(1)
         txy = ust[:, 7].unsqueeze(1)
-        sg11 = sxx - dudx # 定义名义应变减去几何应变
+        Sg11 = sxx - dudx #define nominal strain minus the geometric strain
         sg22 = syy - dvdy
-        sg12 = s2xy - (dudy + dvdx) # 这里的sg12是名义应变减去几何方程的两倍，是vigot表示
-        geoEnergy = txx * sg11 + tyy * sg22 + txy * sg12 # 获得几何方程的泛函
+        sg12 = s2xy - (dudy + dvdx) #where sg12 is the nominal strain minus twice the geometric equation, is vigot said
+        geoEnergy = txx * sg11 + tyy * sg22 + txy * sg12 #obtain the functional of the geometry equation
         
         strainEnergy = 0.5 * (self.D11_mat * sxx ** 2  + 2*self.D12_mat * sxx * syy + self.D22_mat * syy ** 2 + self.D33_mat * s2xy ** 2)
-        # 获得应变能密度的泛函
+        #Obtain functional of strain energy density
         return strainEnergy, geoEnergy
-        
-        
-        
+
+
     def Elasticity3DHW(self, u, x):
         duxdxy = grad(u[:, 0].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
         duydxy = grad(u[:, 1].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
-        return # 以后在定义三维的弹性力学问题再写这个函数
+        Return #later in the definition of three-dimensional elasticity problem to write this function
     
     def Elasticity2DMP(self, ust, x):
         duxdxy = grad(ust[:, 0].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
@@ -286,9 +260,9 @@ class EnergyModel:
         s2xy = dudy + dvdx 
 
 
-        # 经过张量分析理论分析，这是对的
+        #Tensor analysis theory analysis, this is right
         strainEnergy = 0.5 * (self.D11_mat * sxx ** 2  + 2*self.D12_mat * sxx * syy + self.D22_mat * syy ** 2 + self.D33_mat * s2xy ** 2)
-        # 获得应变能密度的泛函
+        #Obtain functional of strain energy density
         return strainEnergy
         
         
@@ -296,7 +270,7 @@ class EnergyModel:
     def Elasticity3DMP(self, u, x):
         duxdxy = grad(u[:, 0].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
         duydxy = grad(u[:, 1].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
-        return # 以后在定义三维的弹性力学问题再写这个函数
+        Return #later in the definition of three-dimensional elasticity problem to write this function
     
     def Elasticity2DMCP(self, fai, x):
         dfdxy = grad(fai[:, 0].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
@@ -307,7 +281,7 @@ class EnergyModel:
         sxy = -dfxdxy[:, 1].unsqueeze(1)
         
         stressEnergy = 1/(4 * self.mu) * (sxx ** 2 + 2 * sxy ** 2 + syy ** 2) - self.nu / (2 * self.E) * (sxx + syy) ** 2
-        # 获得应变能密度的泛函
+        #Obtain functional of strain energy density
         return stressEnergy
         
         
@@ -315,9 +289,9 @@ class EnergyModel:
     def Elasticity3DMCP(self, u, x):
         duxdxy = grad(u[:, 0].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
         duydxy = grad(u[:, 1].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0]
-        return # 以后在定义三维的弹性力学问题再写这个函数
+        Return #later in the definition of three-dimensional elasticity problem to write this function
     
-    def crack_third(self, u, x): # x是二维坐标，而u是一维坐标
+    def crack_third(self, u, x):# x is a two-dimensional coordinates, and u is a one-dimensional coordinates
         dudxy = grad(u[:, 0].unsqueeze(1), x, torch.ones(x.size()[0], 1, device=dev), create_graph=True, retain_graph=True)[0] 
         dudx = dudxy[:, 0].unsqueeze(1)
         dudy = dudxy[:, 1].unsqueeze(1)

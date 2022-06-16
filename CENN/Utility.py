@@ -19,14 +19,14 @@ def ConvBCsToTensors(bc_d):
 # purpose: doing something in post processing for visualization in 3D
 # --------------------------------------------------------------------------------
 def write_vtk(filename, x_space, y_space, z_space, Ux, Uy, Uz):
-    xx, yy, zz = np.meshgrid(x_space, y_space, z_space) # 输入array
+    xx, yy, zz = np.meshgrid(x_space, y_space, z_space) # input array
     displacement = (Ux, Uy, Uz)
-    gridToVTK(filename, xx, yy, zz, pointData={"displacement": displacement}) # 这里是VTK的输出数据了，将空间坐标输出到位移，这里位移一共有3个场变量
+    gridToVTK(filename, xx, yy, zz, pointData={"displacement": displacement}) # here is the output data of VTK, the space coordinates output to the displacement, displacement here a total of three field variables
 
 # --------------------------------------------------------------------------------
 # purpose: doing something in post processing for visualization in 3D
 # --------------------------------------------------------------------------------
-def write_vtk_v2(filename, x_space, y_space, z_space, U, S11, S12, S13, S22, S23, S33, E11, E12, E13, E22, E23, E33, SVonMises): #已经将输出的感兴趣场进行了分类VTK导出
+def write_vtk_v2(filename, x_space, y_space, z_space, U, S11, S12, S13, S22, S23, S33, E11, E12, E13, E22, E23, E33, SVonMises): 
     xx, yy, zz = np.meshgrid(x_space, y_space, z_space)
     
     gridToVTK(filename, xx, yy, zz, pointData={"displacement": U, "S-VonMises": SVonMises, \
@@ -37,7 +37,7 @@ def write_vtk_v2(filename, x_space, y_space, z_space, U, S11, S12, S13, S22, S23
                                                })
     # gridToVTK(filename, xx, yy, zz, pointData={"displacement": U})
 
-def write_vtk_v2p(filename, dom, U, S11, S12, S13, S22, S23, S33, E11, E12, E13, E22, E23, E33, SVonMises): #已经将输出的感兴趣场进行了分类VTK导出
+def write_vtk_v2p(filename, dom, U, S11, S12, S13, S22, S23, S33, E11, E12, E13, E22, E23, E33, SVonMises): 
     xx = np.ascontiguousarray(dom[:, 0])
     yy = np.ascontiguousarray(dom[:, 1])
     zz = np.ascontiguousarray(dom[:, 2]) # 点的VTK
@@ -49,7 +49,7 @@ def write_vtk_v2p(filename, dom, U, S11, S12, S13, S22, S23, S33, E11, E12, E13,
                                                "E22": E22, "E23": E23, "E33": E33\
                                                })
     # gridToVTK(filename, xx, yy, zz, pointData={"displacement": U})
-def write_vtk_v2vp(filename, dom, U, V, S11, S12, S13, S22, S23, S33, E11, E12, E13, E22, E23, E33, SVonMises): #已经将输出的感兴趣场进行了分类VTK导出
+def write_vtk_v2vp(filename, dom, U, V, S11, S12, S13, S22, S23, S33, E11, E12, E13, E22, E23, E33, SVonMises): 
     xx = np.ascontiguousarray(dom[:, 0])
     yy = np.ascontiguousarray(dom[:, 1])
     tt = np.ascontiguousarray(dom[:, 2]) # 点的VTK
@@ -74,12 +74,12 @@ def write_arr2DVTK(filename, coordinates, values):
     disY = np.array(values[:, 1].flatten(), dtype='float32')
     disZ = np.zeros(disX.shape, dtype='float32')
     displacement = (disX, disY, disZ)
-    gridToVTK(filename, x, y, z, pointData={"displacement": displacement}) # 二维数据的VTK文件导出
+    gridToVTK(filename, x, y, z, pointData={"displacement": displacement}) 
 
 # --------------------------------------------------------------------------------
 # purpose: doing something in post processing for visualization in 3D
 # --------------------------------------------------------------------------------
-def write_vtk_2d(filename, x_space, y_space, Ux, Uy): # 这里的第三维度的坐标数据是X，不清楚这个函数有什么用
+def write_vtk_2d(filename, x_space, y_space, Ux, Uy): 
     xx, yy = np.meshgrid(x_space, y_space)
     displacement = (Ux, Uy, Ux)
     gridToVTK(filename, xx, yy, xx,  pointData={"displacement": displacement})
@@ -91,7 +91,7 @@ def write_vtk_2d(filename, x_space, y_space, Ux, Uy): # 这里的第三维度的
 def plot_loss_convergence(loss_array): # 划出损失函数
     print('Loss convergence')
     rangee = np.arange(1, len(loss_array) + 1)
-    loss_plt, = plt.semilogx(rangee, loss_array, label='total loss') # 这里是一半的log尺度变换，仅仅变X轴
+    loss_plt, = plt.semilogx(rangee, loss_array, label='total loss') 
     plt.legend(handles=[loss_plt])
     plt.xlabel('Iteration')
     plt.ylabel('Loss value')
@@ -163,36 +163,33 @@ def getH10norm(F11, F12, F13, F21, F22, F23, F31, F32, F33, Nx, Ny, Nz, hx, hy, 
         H10norm = np.sqrt(np.trapz(np.trapz(FinnerFTensor, dx=hy), dx=hx))
         # H10norm = np.sqrt(sp.simps(sp.simps(FinnerFTensor, dx=hy), dx=hx))
     else:
-        # ||u||_H^1_0 = \sqrt(\int (Gradu : Gradu)) = Aij Bij
-        # FinnerF = (F11-1)*(F11-1) + F12*F21 + F13*F31 + F21*F12 + (F22-1)*(F22-1) + F23*F32 + F31*F13 + F32*F23 + (F33-1)*(F33-1)  # WRONG
+
         FinnerF = (F11 - 1) * (F11 - 1) + F12 * F12 + F13 * F13 + F21 * F21 + (F22 - 1) * (
-                    F22 - 1) + F23 * F23 + F31 * F31 + F32 * F32 + (F33 - 1) * (F33 - 1) # 位移梯度的范德蒙范数
+                    F22 - 1) + F23 * F23 + F31 * F31 + F32 * F32 + (F33 - 1) * (F33 - 1) 
         FinnerFTensor = FinnerF.reshape(Nx, Ny, Nz)
         H10norm = np.sqrt(np.trapz(np.trapz(np.trapz(FinnerFTensor, dx=hz), dx=hy), dx=hx))
-        # H10norm = np.sqrt(sp.simps(sp.simps(sp.simps(FinnerFTensor, dx=hz), dx=hy), dx=hx))
     return H10norm
 
 def getH10norm2D(F11, F12, F21, F22, Nx, Ny, hx, hy):
     FinnerF = (F11 - 1) ** 2 + F12 ** 2 + F21 ** 2 + (F22 - 1) ** 2
     FinnerFTensor = FinnerF.reshape(Nx, Ny)
     H10norm = np.sqrt(np.trapz(np.trapz(FinnerFTensor, dx=hy), dx=hx))
-    # H10norm = np.sqrt(sp.simps(sp.simps(FinnerFTensor, dx=hy), dx=hx))
     return H10norm
 
 
-def write_arr2DVTK_crack(filename, coordinates, values): # 将二维反平面问题的坐标输出为相应坐标点的z方向的位移
+def write_arr2DVTK_crack(filename, coordinates, values): 
     # displacement = np.concatenate((values[:, 0:1], values[:, 1:2], values[:, 0:1]), axis=1)
     x = np.array(coordinates[:, 0].flatten(), dtype='float32')
     y = np.array(coordinates[:, 1].flatten(), dtype='float32')
     z = np.zeros(x.shape, dtype='float32')
     disZ = np.array(values[:, 0].flatten(), dtype='float32')
-    pointsToVTK(filename, x, y, z, data={"displacementZ": disZ}) # 二维数据的VTK文件导出
+    pointsToVTK(filename, x, y, z, data={"displacementZ": disZ})
     
-def write_arr2DVTK_beam_com(filename, coordinates, values): # 将二维反平面问题的坐标输出为相应坐标点的z方向的位移
+def write_arr2DVTK_beam_com(filename, coordinates, values): 
     # displacement = np.concatenate((values[:, 0:1], values[:, 1:2], values[:, 0:1]), axis=1)
     x = np.array(coordinates[:, 0].flatten(), dtype='float32')
     y = np.array(coordinates[:, 1].flatten(), dtype='float32')
     z = np.zeros(x.shape, dtype='float32')
     disX = np.array(values[:, 0].flatten(), dtype='float32')
     disY = np.array(values[:, 1].flatten(), dtype='float32')
-    pointsToVTK(filename, x, y, z, data={"displacementX": disX, "displacementY": disY}) # 二维数据的VTK文件导出
+    pointsToVTK(filename, x, y, z, data={"displacementX": disX, "displacementY": disY}) 

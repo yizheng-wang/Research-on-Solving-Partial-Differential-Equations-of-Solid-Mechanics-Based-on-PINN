@@ -127,7 +127,7 @@ class MultiLayerNet_d(torch.nn.Module):
         return y
     
 class MultiLayerNet_d_b(torch.nn.Module):
-     # 专门为悬臂梁设计的浅层网络,最后一层不能sigmoid，因为距离最多4
+      # Shallow network designed specifically for cantilever beam, last layer cannot be sigmoid because distance is up to 4
     def __init__(self, D_in, H, D_out):
         """
         distance function

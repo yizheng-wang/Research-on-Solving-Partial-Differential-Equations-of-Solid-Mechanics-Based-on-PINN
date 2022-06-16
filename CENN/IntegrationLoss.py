@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 class IntegrationLoss:
-    def __init__(self, numIntType, dim, defect=False):# defect是针对4分之1方板圆孔
+    def __init__(self, numIntType, dim, defect=False):# defect is for 1/4 square plate round hole
         print("Constructor: IntegrationLoss ", numIntType, " in ", dim, " dimension ;", "Whether the structrure is plate with hole:", defect)
         self.type = numIntType
         self.dim = dim
@@ -82,7 +82,7 @@ class IntegrationLoss:
         else:
             return self.trapz(y1D, dx=dx)
 
-    def trapz2D(self, f, xy=None, dx=None, dy=None, shape=None):# 之后在有缺陷的圆孔需要面积重新计算
+    def trapz2D(self, f, xy=None, dx=None, dy=None, shape=None):#after the defective round hole need area to calculate again
         f2D = f.reshape(shape[0], shape[1])
         if dx is None and dy is None:
             x = xy[:, 0].flatten().reshape(shape[0], shape[1])
@@ -91,7 +91,7 @@ class IntegrationLoss:
         else:
             return self.trapz(self.trapz(f2D, dx=dy), dx=dx)
 
-    def trapz3D(self, f, xyz=None, dx=None, dy=None, dz=None, shape=None):# 之后在有缺陷的圆孔需要面积重新计算
+    def trapz3D(self, f, xyz=None, dx=None, dy=None, dz=None, shape=None):#after the defective round hole need area to calculate again
         f3D = f.reshape(shape[0], shape[1], shape[2])
         if dx is None and dy is None and dz is None:
             print("dxdydz - trapz3D - Need to implement !!!")
@@ -107,10 +107,10 @@ class IntegrationLoss:
             return self.simps(f1D, dx=dx, axis=axis)
 
     def simps2D(self, f, xy=None, dx=None, dy=None, shape=None):
-        f2D = f.reshape(shape[0], shape[1]) # 将一维的张量变成一个二阶的张量，方便simpsion积分
+        f2D = f.reshape(shape[0], shape[1]) #Change the one-dimensional tensor into a second-order tensor for convenience of simpsion integral
         if dx is None and dy is None:
             x = xy[:, 0].flatten().reshape(shape[0], shape[1])
-            y = xy[:, 1].flatten().reshape(shape[0], shape[1]) # 将两个维度的坐标变成一个二阶张量用来simpsion积分
+            y = xy[:, 1]. flatten (). reshape (shape[0], shape[1]) #the coordinates of the two dimensions into a second-order tensor used for simpsion integral
             return self.simps(self.simps(f2D, y[0, :]), x[:, 0])
         else:
             return self.simps(self.simps(f2D, dx=dy), dx=dx)
@@ -123,7 +123,7 @@ class IntegrationLoss:
             return self.simps(self.simps(self.simps(f3D, dx=dz), dx=dy), dx=dx)
 
     def montecarlo1D(self, fx, l):
-        return l * torch.sum(fx) / fx.data.nelement() # 这个积分是对的
+        return l * torch.sum(fx) / fx.data.nelement() 
 
     def montecarlo2D(self, fxy, lx, ly, r=0):
         if self.defect == False:
@@ -133,20 +133,17 @@ class IntegrationLoss:
             area = lx * ly - np.pi/4 * r**2
             return area * torch.sum(fxy) / fxy.data.nelement()
 
-    def montecarlo3D(self, fxyz, lx, ly, lz): # 之后在有缺陷的圆孔需要面积重新计算
+    def montecarlo3D(self, fxyz, lx, ly, lz): 
         volume = lx * ly * lz
-        return volume * torch.sum(fxyz) / fxyz.data.nelement() # 每一个点权重相同、
+        return volume * torch.sum(fxyz) / fxyz.data.nelement() 
     
-    def ele2d(self, fxy, area): # 面积不同积分的权重不同
+    def ele2d(self, fxy, area): 
         '''
         fxy : energy density
         area: element area
         '''
         return torch.sum(fxy*area)
-    def simps(self, y, x=None, dx=1, axis=-1, even='avg'):# 之后在有缺陷的圆孔需要面积重新计算
-        # import scipy.integrate as sp
-        # sp.simps()
-        # y = torch.tensor(y) # 输入的y是场变量200，50，分两次积分
+    def simps(self, y, x=None, dx=1, axis=-1, even='avg'):
         nd = len(y.shape)
         N = y.shape[axis]
         last_dx = dx
@@ -176,11 +173,11 @@ class IntegrationLoss:
                                  "'avg', 'last', or 'first'.")
             # Compute using Simpson's rule on first intervals
             if even in ['avg', 'first']:
-                slice1 = self.tupleset(slice1, axis, -1) # 这里axis=-1
+                slice1 = self.tupleset(slice1, axis, -1) 
                 slice2 = self.tupleset(slice2, axis, -2)
                 if x is not None:
                     last_dx = x[slice1] - x[slice2]
-                val += 0.5 * last_dx * (y[slice1] + y[slice2]) # slice是两个维度的切片，元组的第一个元素是行切片，第二个元素是列切片,这是一个梯形公式
+                val += 0.5 * last_dx * (y[slice1] + y[slice2]) 
                 result = self._basic_simps(y, 0, N - 3, x, dx, axis)
             # Compute using Simpson's rule on last set of intervals
             if even in ['avg', 'last']:
@@ -201,9 +198,9 @@ class IntegrationLoss:
         return result
 
     def tupleset(self, t, i, value):
-        l = list(t) # 因为tuple是不可change的，所以这里将tuple先变成了list
-        l[i] = value # 对i位置上进行赋值
-        return tuple(l) # 将list变回tuple
+        l = list(t) 
+        l[i] = value 
+        return tuple(l) 
 
     def _basic_simps(self, y, start, stop, x, dx, axis):
         nd = len(y.shape)
@@ -216,7 +213,7 @@ class IntegrationLoss:
         slice2 = self.tupleset(slice_all, axis, slice(start + 2, stop + 2, step))
 
         if x is None:  # Even spaced Simpson's rule.
-            result = torch.sum(dx / 3.0 * (y[slice0] + 4 * y[slice1] + y[slice2]), axis) # simpson公式，这里/3是因为两个dx
+            result = torch.sum(dx / 3.0 * (y[slice0] + 4 * y[slice1] + y[slice2]), axis) 
         else:
             # Account for possibly different spacings.
             #    Simpson's rule changes a bit.
@@ -225,9 +222,9 @@ class IntegrationLoss:
                 h = x[1:, 0:1] - x[:-1, 0:1]
             elif axis == -1:
                 if len(x.shape)==2:
-                    ht = x[:, 1:] - x[:, :-1] # 两个维度，a是一个行向量
+                    ht = x[:, 1:] - x[:, :-1] 
                 if len(x.shape)==1:
-                    ht = x[1:] - x[:-1] # 两个维度，a是一个行向量
+                    ht = x[1:] - x[:-1] 
             
             sl0 = self.tupleset(slice_all, axis, slice(start, stop, step))
             sl1 = self.tupleset(slice_all, axis, slice(start + 1, stop + 1, step))
@@ -246,7 +243,7 @@ class IntegrationLoss:
         if axis == 0:
             return a[1:, 0:1] - a[:-1, 0:1]
         elif axis == -1:
-            return a[:, 1:] - a[:, :-1] # 两个维度，a是一个行向量
+            return a[:, 1:] - a[:, :-1] 
         else:
             print("Not implemented yet !!! function: torch_diff_axis_0 error !!!")
             exit()

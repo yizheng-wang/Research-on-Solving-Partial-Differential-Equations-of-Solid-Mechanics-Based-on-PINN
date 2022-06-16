@@ -37,27 +37,27 @@ CENNL2 = np.load('./loss_error/hyper_energy_errorL2_epoch10000_penalty3000_s%i.n
 
 #fig = plt.figure(dpi=1000, figsize=(15, 3)) #接下来画损失函数的三种方法的比较以及相对误差的比较
 
-#plt.subplot(1, 3, 1) # cpinn的损失函数
+
 plt.ylim(-1.5, -0.5)
 plt.xlim(0, 10000)
 iteration = np.array(range(0, 10000, 10))
 plt.plot(iteration, DEMloss[::10], '--')
 plt.plot(iteration, CENNloss[::10], '-.')
 plt.legend([ 'DEM', 'CENN'], loc = 'upper right')
-plt.xlabel('迭代数')
-plt.ylabel('能量损失值')
+plt.xlabel('Iteration')
+plt.ylabel('Loss')
 #plt.title('Loss comparision of DEM and CENN', fontsize = 10) 
 plt.show()
 
-#plt.subplot(1, 3, 2) # 能量法以及cenn的损失函数，比较J1，需要画一条精确的线
+
 plt.yscale('log')
 plt.xlim(0, 10000)
 iteration = np.array(range(0, 10000, 10))
 plt.plot(iteration, DEML2, '--')
 plt.plot(iteration, CENNL2, '-.')
 plt.legend([ 'DEM', 'CENN'], loc = 'upper right')
-plt.xlabel('迭代数')
-plt.ylabel(r'$L_{2}$误差')
+plt.xlabel('Iteration')
+plt.ylabel(r'$L_{2}$ error')
 settick()
 #plt.title('L2 comparision of DEM and CENN', fontsize = 10) 
 plt.show()

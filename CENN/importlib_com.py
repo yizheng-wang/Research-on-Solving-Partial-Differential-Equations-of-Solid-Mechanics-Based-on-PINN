@@ -11,7 +11,7 @@ from pyevtk.hl import gridToVTK
 from pyevtk.hl import pointsToVTK
 import numpy.matlib as ml
 
-dev = torch.device('cpu') # 默认是CPU
+dev = torch.device('cpu') 
 if torch.cuda.is_available():
     print("CUDA is available, running on GPU")
     dev = torch.device('cuda')
