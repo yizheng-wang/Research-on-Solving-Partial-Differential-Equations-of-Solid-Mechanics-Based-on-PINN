@@ -1,0 +1,1120 @@
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+from  torch.autograd import grad
+import time
+import matplotlib as mpl
+from itertools import chain
+torch.set_default_tensor_type(torch.DoubleTensor) # 将tensor的类型变成默认的double
+torch.set_default_tensor_type(torch.cuda.DoubleTensor) # 将cuda的tensor的类型变成默认的double
+
+plt.rcParams['font.family'] = ['sans-serif'] # 用来正常显示负号
+mpl.rcParams['figure.dpi'] = 1000
+
+def settick():
+    '''
+    对刻度字体进行设置，让上标的符号显示正常
+    :return: None
+    '''
+    ax1 = plt.gca()  # 获取当前图像的坐标轴
+ 
+    # 更改坐标轴字体，避免出现指数为负的情况
+    tick_font = mpl.font_manager.FontProperties(family='DejaVu Sans', size=7.0)
+    for labelx  in ax1.get_xticklabels():
+        labelx.set_fontproperties(tick_font) #设置 x轴刻度字体
+    for labely in ax1.get_yticklabels():
+        labely.set_fontproperties(tick_font) #设置 y轴刻度字体
+    ax1.xaxis.set_major_locator(mpl.ticker.MaxNLocator(integer=True))  # x轴刻度设置为整数
+    plt.tight_layout()
+
+def setup_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    #random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    
+setup_seed(2023)
+
+Po = 10.
+Pi = 5.
+a = 0.5
+b = 1.0
+
+nepoch = 5000
+
+dom_num = 101
+N_test = 101
+E = 1000
+nu = 0.3
+Ura = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*a + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/a)
+Urb = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*b + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/b)
+
+Po_list_train = list(np.linspace(6, 15, 31))  # for DeepONet training
+Pi_list_train = list(np.linspace(1, 10, 31))  # for DeepONet training
+nepoch1 = 50 # Adam iteration
+nepoch2 = 25 
+nepoch3 = 25 
+
+nepoch_DeepONet = 1000# iteraion number in one dataset
+iter_data = 1 # the iteration number of the whole data
+num = 1 # 分析num个a的长度
+
+N_DeepONet_t = 101 # the points in DeepONet trunk net
+Train_DeepONet = 0 # whether train the DeepONet
+
+def simpson_int(y, x,  nx = N_test):
+    '''
+    Simpson integration for 1D
+
+    Parameters
+    ----------
+    y : tensor
+        The value of the x.
+    x : tensor
+        Coordinate of the input.
+    nx : int, optional
+        The grid node number of x axis. The default is N_test.
+        
+    Returns
+    -------
+    result : tensor
+        the result of the integration.
+
+    '''
+    weightx = [4, 2] * int((nx-1)/2)
+    weightx = [1] + weightx
+    weightx[-1] = weightx[-1]-1
+    weightx = np.array(weightx)
+    
+
+    weightx = weightx.reshape(-1,1)
+
+
+    weight = torch.tensor(weightx, device='cuda')
+    weight = weight.flatten()
+    hx = torch.abs(x[0]-x[-1])/(nx-1)
+    y = y.flatten()
+    result = torch.sum(weight*y)*hx/3
+    return result
+
+class Trunk_net(torch.nn.Module):
+    def __init__(self, D_in, H, D_out):
+        """
+        DeepONet: Trunk Net
+        """
+        super(Trunk_net, self).__init__()
+        self.linear1 = torch.nn.Linear(D_in, H)
+        self.linear2 = torch.nn.Linear(H, H)
+        self.linear3 = torch.nn.Linear(H, H)
+        self.linear4 = torch.nn.Linear(H, H)
+        self.linear5 = torch.nn.Linear(H, H)
+        self.linear6 = torch.nn.Linear(H, H)
+        self.linear7 = torch.nn.Linear(H, D_out)
+        
+        self.a1 = torch.nn.Parameter(torch.Tensor([0.2]))
+        
+        # 有可能用到加速收敛技术
+        #self.a1 = torch.Tensor([0.1]).cuda()
+        # self.a2 = torch.Tensor([0.1])
+        # self.a3 = torch.Tensor([0.1])
+        self.n = 1/self.a1.data.cuda()
+
+
+        torch.nn.init.normal_(self.linear1.weight, mean=0, std=np.sqrt(2/(D_in+H)))
+        torch.nn.init.normal_(self.linear2.weight, mean=0, std=np.sqrt(2/(H+H)))
+        torch.nn.init.normal_(self.linear3.weight, mean=0, std=np.sqrt(2/(H+H)))
+        torch.nn.init.normal_(self.linear4.weight, mean=0, std=np.sqrt(2/(H+D_out)))
+        
+        
+        torch.nn.init.normal_(self.linear1.bias, mean=0, std=1)
+        torch.nn.init.normal_(self.linear2.bias, mean=0, std=1)
+        torch.nn.init.normal_(self.linear3.bias, mean=0, std=1)
+        torch.nn.init.normal_(self.linear4.bias, mean=0, std=1)
+
+    def forward(self, x):
+        """
+        Input: the coordinate of the cylinder
+        Output: the basis of the DeepONet
+        """
+
+        y1 = torch.tanh(self.n*self.a1*self.linear1(x))
+        y2 = torch.tanh(self.n*self.a1*self.linear2(y1))
+        y3 = torch.tanh(self.n*self.a1*self.linear3(y2))
+        y4 = torch.tanh(self.n*self.a1*self.linear4(y3))
+        y5 = torch.tanh(self.n*self.a1*self.linear5(y4))
+        y6 = torch.tanh(self.n*self.a1*self.linear5(y5))
+        y = self.n*self.a1*self.linear7(y6)
+        return y
+  
+class Branch_net(torch.nn.Module):
+    def __init__(self, D_in, H, D_out):
+        """
+        DeepONet: Branch net
+        """
+        super(Branch_net, self).__init__()
+        self.linear1 = torch.nn.Linear(D_in, H)
+        self.linear2 = torch.nn.Linear(H, H)
+        self.linear3 = torch.nn.Linear(H, H)
+        self.linear4 = torch.nn.Linear(H, D_out)
+        
+        self.a1 = torch.nn.Parameter(torch.Tensor([0.2]))
+        
+        # 有可能用到加速收敛技术
+        # self.a1 = torch.Tensor([0.1]).cuda()
+        # self.a2 = torch.Tensor([0.1])
+        # self.a3 = torch.Tensor([0.1])
+        self.n = 1/self.a1.data.cuda()
+
+
+        torch.nn.init.normal_(self.linear1.weight, mean=0, std=np.sqrt(2/(D_in+H)))
+        torch.nn.init.normal_(self.linear2.weight, mean=0, std=np.sqrt(2/(H+H)))
+        torch.nn.init.normal_(self.linear3.weight, mean=0, std=np.sqrt(2/(H+H)))
+        torch.nn.init.normal_(self.linear4.weight, mean=0, std=np.sqrt(2/(H+D_out)))
+        
+        
+        torch.nn.init.normal_(self.linear1.bias, mean=0, std=1)
+        torch.nn.init.normal_(self.linear2.bias, mean=0, std=1)
+        torch.nn.init.normal_(self.linear3.bias, mean=0, std=1)
+        torch.nn.init.normal_(self.linear4.bias, mean=0, std=1)
+
+    def forward(self, x):
+        """
+        The input: a, b, Mt, and G
+        """
+
+        y1 = torch.tanh(self.n*self.a1*self.linear1(x))
+        y2 = torch.tanh(self.n*self.a1*self.linear2(y1))
+        y3 = torch.tanh(self.n*self.a1*self.linear3(y2))
+        y = self.n*self.a1*self.linear4(y3)
+        return y
+
+
+# =============================================================================
+# DeepONet dataset: we try a/b ratio is 1.0 for the test, and the other datasets for training set
+# =============================================================================
+stress_data_set = []
+for Pi_e in Pi_list_train:  
+    for Po_e in Po_list_train:  
+        stress_data_set.append([Pi_e, Po_e]) # a, b, Mt, G
+stress_data_set = np.array(stress_data_set)
+point_data_set = np.zeros([len(stress_data_set), N_DeepONet_t])
+fai_data_set = np.zeros([len(stress_data_set), N_DeepONet_t])
+for i,Pi_Po in enumerate(stress_data_set):
+    r = np.linspace(a, b, N_DeepONet_t)
+    point_data_set[i] = r
+    
+    fai_exact = a**2/(b**2-a**2)*(r**2/2-b**2*np.log(r))*Pi_Po[0]-b**2/(b**2-a**2)*(r**2/2-a**2*np.log(r))*Pi_Po[1]
+    fai_data_set[i] = fai_exact
+
+def pred(xy, stress):
+    '''
+    
+
+    Parameters
+    ----------
+    xy : tensor 
+        the coordinate of the input tensor.
+    stress : Pi and Po
+
+    Returns
+    the prediction of fai
+
+    '''
+
+    pred_fai = torch.sum((model_Branch_net(stress)*model_Trunk_net(xy)),1,keepdims = True)
+
+    return pred_fai
+    
+# =============================================================================
+#     DeepONet training
+# =============================================================================
+if Train_DeepONet == 1:
+    model_Branch_net = Branch_net(2, 30, 20).cuda()
+    model_Trunk_net = Trunk_net(1, 30, 20).cuda()
+    criterion = torch.nn.MSELoss()
+    optim = torch.optim.Adam(params=chain(model_Branch_net.parameters(), model_Trunk_net.parameters()), lr= 0.001)
+    loss_array_DeepONet = {}
+    for iter_all in range(iter_data): 
+        for i, Pi_Po in enumerate(stress_data_set):
+            loss_array_DeepONet[i] = []
+            stress_eve = torch.tensor(stress_data_set[i]).cuda()
+            xy_set = torch.tensor(point_data_set[i][:, np.newaxis]).cuda()
+            fai_set = torch.tensor(fai_data_set[i][:, np.newaxis]).cuda()
+            
+            
+            start = time.time()
+            for epoch in range(nepoch_DeepONet):
+                if epoch == nepoch_DeepONet - 1:
+                    end = time.time()
+                    consume_time = end-start
+                    print('time is %f' % consume_time)
+                    
+                def closure():  
+                    # 区域内部损失
+                    pred_fai = pred(xy_set, stress_eve) 
+                    loss = criterion(pred_fai, fai_set) 
+                    optim.zero_grad()
+                    loss.backward(retain_graph=True)
+                    loss_array_DeepONet[i].append(loss.data.cpu())
+        
+                    if epoch%10==0:
+                        print('whole iter: %i, pi : %f, po : %f,   epoch : %i, the loss : %f' % \
+                              (iter_all, Pi_Po[0], Pi_Po[1], epoch, loss.data))
+                    return loss
+                optim.step(closure)
+    torch.save(model_Branch_net, './branch_nn')
+    torch.save(model_Trunk_net, './trunk_nn')
+model_Branch_net = torch.load('./branch_nn')
+model_Trunk_net = torch.load('./trunk_nn')
+
+
+
+# =============================================================================
+# DeepONet_ DCM
+# =============================================================================
+
+
+def dom_data(Nf):
+    '''
+    生成内部点，极坐标形式生成
+    '''
+    
+    # r = (b-a)*np.random.rand(Nf)+a
+    # theta = 2 * np.pi * np.random.rand(Nf) # 角度0到2*pi
+    r = np.linspace(a,b, Nf)
+    xy_dom = np.stack([r], 1)
+    xy_dom = torch.tensor(xy_dom,  requires_grad=True, device='cuda')
+    
+    return xy_dom
+
+
+
+def evaluate_sigma(N_test):# calculate the prediction of the stress rr and theta
+# 分析sigma应力，输入坐标是极坐标r和theta
+    r = np.linspace(a, b, N_test)
+    theta = np.linspace(0, 2*np.pi, N_test) # y方向N_test个点
+    r_mesh, theta_mesh = np.meshgrid(r, theta)
+    xy = np.stack((r_mesh.flatten(), theta_mesh.flatten()), 1)
+    X_test = torch.tensor(xy,  requires_grad=True, device='cuda')
+    r = X_test[:, 0].unsqueeze(1)
+    # 将r输入到pred中，输出应力函数
+    fai = pred(r, stress)
+    dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+    dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+    pred_sigma_rr = (1/r)*dfaidr # rr方向的正应力
+    pred_sigma_theta = dfaidrr # theta方向的正应力
+    pred_u_r = 1/E*(r*dfaidrr-nu*dfaidr)
+    
+    pred_sigma_rr = pred_sigma_rr.data.cpu().numpy().reshape(N_test, N_test)
+    pred_sigma_theta = pred_sigma_theta.data.cpu().numpy().reshape(N_test, N_test)
+    pred_u_r = pred_u_r.data.cpu().numpy().reshape(N_test, N_test)
+    # sigma_r = a**2/(b**2-a**2)*(1-b**2/r**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r**2)*Po
+    # sigma_theta = a**2/(b**2-a**2)*(1+b**2/r**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r**2)*Po
+
+    return r_mesh, theta_mesh, pred_sigma_rr, pred_sigma_theta, pred_u_r
+
+def evaluate_sigma_line(N_test):# output the prediction of the stress rr and theta along radius in direction of r without theta
+    r_numpy = np.linspace(a, b, N_test) # generate the coordinate of r by numpy 
+    r = torch.tensor(r_numpy,  requires_grad=True, device='cuda').unsqueeze(1) # change the type of array to tensor used to be AD
+    fai = pred(r, stress) # Input r to the pred function to get the necessary predition stress function
+    dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+    dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+    pred_sigma_rr = (1/r)*dfaidr # rr方向的正应力
+    pred_sigma_theta = dfaidrr # theta方向的正应力
+    pred_u_r = 1/E*(r*dfaidrr-nu*dfaidr)
+    pred_sigma_rr = pred_sigma_rr.data.cpu().numpy() # change the type of tensor to the array for the use of plotting
+    pred_sigma_theta = pred_sigma_theta.data.cpu().numpy()
+    pred_u_r = pred_u_r.data.cpu().numpy()
+    return r_numpy, pred_sigma_rr, pred_sigma_theta, pred_u_r
+# learning the homogenous network
+# learning the homogenous network
+
+optim = torch.optim.Adam(params=chain(model_Branch_net.parameters(), model_Trunk_net.parameters()), lr= 0.002)
+loss_array = []
+loss_dom_array = []
+loss_ex_array = []
+error_sigma_rr_array_D = []
+error_sigma_theta_array_D = []
+error_dis_r_array_D = []
+
+nepoch = int(nepoch)
+start = time.time()
+stress = torch.tensor([Pi, Po]).cuda()
+Xf = dom_data(dom_num)
+for epoch in range(nepoch1):
+    if epoch == nepoch-1:
+        end = time.time()
+        consume_time = end-start
+        print('time is %f' % consume_time)  
+        
+        
+    def closure():  
+        # 区域内部损失
+        r = Xf
+        fai = pred(r, stress)  
+        dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]   
+
+        J_dom = simpson_int(0.5/E*(1/r**2*dfaidr**2 + dfaidrr**2 - 2*nu/r*dfaidr*dfaidrr)*2*np.pi*r, r)
+        # calculate the complementary external energy
+        ra = torch.tensor([a],  requires_grad=True, device='cuda').unsqueeze(1)
+        rb = torch.tensor([b],  requires_grad=True, device='cuda').unsqueeze(1)
+        faia = pred(ra, stress)  
+        faib = pred(rb, stress)  
+        dfaidra = grad(faia, ra, retain_graph=True, create_graph=True)[0]
+        dfaidrb = grad(faib, rb, retain_graph=True, create_graph=True)[0]
+        J_ex = 2*np.pi*(-Ura*dfaidra + Urb*dfaidrb) # 计算外力余势
+   
+        loss = J_dom - J_ex 
+        optim.zero_grad()
+        loss.backward(retain_graph=True)
+        loss_array.append(loss.data.cpu())
+        loss_dom_array.append(J_dom.data.cpu())
+        loss_ex_array.append(J_ex.data.cpu())
+        if epoch == nepoch-1:
+            print()
+        r_numpy, pred_sigma_rr, pred_sigma_theta, pred_dis_r = evaluate_sigma_line(N_test)    
+        exact_sigma_rr = a**2/(b**2-a**2)*(1-b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r_numpy**2)*Po
+        exact_sigma_theta = a**2/(b**2-a**2)*(1+b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r_numpy**2)*Po     
+        exact_dis_r = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*r_numpy + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/r_numpy)
+        
+        L2_rr_error = np.linalg.norm(pred_sigma_rr.flatten() - exact_sigma_rr.flatten())/np.linalg.norm(exact_sigma_rr.flatten())
+        L2_theta_error = np.linalg.norm(pred_sigma_theta.flatten() - exact_sigma_theta.flatten())/np.linalg.norm(exact_sigma_theta.flatten())
+        L2_dis_r_error = np.linalg.norm(pred_dis_r.flatten() - exact_dis_r.flatten())/np.linalg.norm(exact_dis_r.flatten())
+        
+        error_sigma_rr_array_D.append(L2_rr_error)
+        error_sigma_theta_array_D.append(L2_theta_error)
+        error_dis_r_array_D.append(L2_dis_r_error)
+        if epoch%10==0:
+            print(' epoch : %i, the loss : %f, loss dom : %f, loss ex : %f' % \
+                  (epoch, loss.data, J_dom.data, J_ex.data))
+        return loss
+    optim.step(closure)
+r_mesh, theta_mesh, pred_sigma_rr_10D, pred_sigma_theta_10D, pred_dis_r_10D = evaluate_sigma(N_test) 
+
+for epoch in range(nepoch2):
+    if epoch == nepoch2-1:
+        end = time.time()
+        consume_time = end-start
+        print('time is %f' % consume_time)
+        
+    def closure():  
+        # 区域内部损失
+        r = Xf
+        fai = pred(r, stress) 
+        dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]   
+
+        J_dom = simpson_int(0.5/E*(1/r**2*dfaidr**2 + dfaidrr**2 - 2*nu/r*dfaidr*dfaidrr)*2*np.pi*r, r)
+        # calculate the complementary external energy
+        ra = torch.tensor([a],  requires_grad=True, device='cuda').unsqueeze(1)
+        rb = torch.tensor([b],  requires_grad=True, device='cuda').unsqueeze(1)
+        faia = pred(ra, stress)  
+        faib = pred(rb, stress)  
+        dfaidra = grad(faia, ra, retain_graph=True, create_graph=True)[0]
+        dfaidrb = grad(faib, rb, retain_graph=True, create_graph=True)[0]
+        J_ex = 2*np.pi*(-Ura*dfaidra + Urb*dfaidrb) # 计算外力余势
+   
+        loss = J_dom - J_ex 
+        optim.zero_grad()
+        loss.backward(retain_graph=True)
+        loss_array.append(loss.data.cpu())
+        loss_dom_array.append(J_dom.data.cpu())
+        loss_ex_array.append(J_ex.data.cpu())
+        if epoch == nepoch-1:
+            print()
+        r_numpy, pred_sigma_rr, pred_sigma_theta, pred_dis_r = evaluate_sigma_line(N_test)    
+        exact_sigma_rr = a**2/(b**2-a**2)*(1-b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r_numpy**2)*Po
+        exact_sigma_theta = a**2/(b**2-a**2)*(1+b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r_numpy**2)*Po     
+        exact_dis_r = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*r_numpy + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/r_numpy)
+        
+        L2_rr_error = np.linalg.norm(pred_sigma_rr.flatten() - exact_sigma_rr.flatten())/np.linalg.norm(exact_sigma_rr.flatten())
+        L2_theta_error = np.linalg.norm(pred_sigma_theta.flatten() - exact_sigma_theta.flatten())/np.linalg.norm(exact_sigma_theta.flatten())
+        L2_dis_r_error = np.linalg.norm(pred_dis_r.flatten() - exact_dis_r.flatten())/np.linalg.norm(exact_dis_r.flatten())
+        
+        error_sigma_rr_array_D.append(L2_rr_error)
+        error_sigma_theta_array_D.append(L2_theta_error)
+        error_dis_r_array_D.append(L2_dis_r_error)
+        if epoch%10==0:
+            print(' epoch : %i, the loss : %f, loss dom : %f, loss ex : %f' % \
+                  (epoch, loss.data, J_dom.data, J_ex.data))
+        return loss
+    optim.step(closure)
+r_mesh, theta_mesh, pred_sigma_rr_30D, pred_sigma_theta_30D, pred_dis_r_30D = evaluate_sigma(N_test) 
+
+for epoch in range(nepoch3):
+    if epoch == nepoch3-1:
+        end = time.time()
+        consume_time = end-start
+        print('time is %f' % consume_time)
+        
+    def closure():  
+        # 区域内部损失
+        r = Xf
+        fai = pred(r, stress)   
+        dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]   
+
+        J_dom = simpson_int(0.5/E*(1/r**2*dfaidr**2 + dfaidrr**2 - 2*nu/r*dfaidr*dfaidrr)*2*np.pi*r, r)
+        # calculate the complementary external energy
+        ra = torch.tensor([a],  requires_grad=True, device='cuda').unsqueeze(1)
+        rb = torch.tensor([b],  requires_grad=True, device='cuda').unsqueeze(1)
+        faia = pred(ra, stress)  
+        faib = pred(rb, stress)  
+        dfaidra = grad(faia, ra, retain_graph=True, create_graph=True)[0]
+        dfaidrb = grad(faib, rb, retain_graph=True, create_graph=True)[0]
+        J_ex = 2*np.pi*(-Ura*dfaidra + Urb*dfaidrb) # 计算外力余势
+   
+        loss = J_dom - J_ex 
+        optim.zero_grad()
+        loss.backward(retain_graph=True)
+        loss_array.append(loss.data.cpu())
+        loss_dom_array.append(J_dom.data.cpu())
+        loss_ex_array.append(J_ex.data.cpu())
+        if epoch == nepoch-1:
+            print()
+        r_numpy, pred_sigma_rr, pred_sigma_theta, pred_dis_r = evaluate_sigma_line(N_test)    
+        exact_sigma_rr = a**2/(b**2-a**2)*(1-b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r_numpy**2)*Po
+        exact_sigma_theta = a**2/(b**2-a**2)*(1+b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r_numpy**2)*Po     
+        exact_dis_r = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*r_numpy + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/r_numpy)
+        
+        L2_rr_error = np.linalg.norm(pred_sigma_rr.flatten() - exact_sigma_rr.flatten())/np.linalg.norm(exact_sigma_rr.flatten())
+        L2_theta_error = np.linalg.norm(pred_sigma_theta.flatten() - exact_sigma_theta.flatten())/np.linalg.norm(exact_sigma_theta.flatten())
+        L2_dis_r_error = np.linalg.norm(pred_dis_r.flatten() - exact_dis_r.flatten())/np.linalg.norm(exact_dis_r.flatten())
+        
+        error_sigma_rr_array_D.append(L2_rr_error)
+        error_sigma_theta_array_D.append(L2_theta_error)
+        error_dis_r_array_D.append(L2_dis_r_error)
+        if epoch%10==0:
+            print(' epoch : %i, the loss : %f, loss dom : %f, loss ex : %f' % \
+                  (epoch, loss.data, J_dom.data, J_ex.data))
+        return loss
+    optim.step(closure)
+r_mesh, theta_mesh, pred_sigma_rr_50D, pred_sigma_theta_50D, pred_dis_r_50D = evaluate_sigma(N_test)  
+r_numpy, predline_sigma_rr_50DL, predline_sigma_theta_50DL, predline_dis_r_50DL = evaluate_sigma_line(N_test)
+
+for epoch in range(nepoch):
+    if epoch == nepoch-1:
+        end = time.time()
+        consume_time = end-start
+        print('time is %f' % consume_time)
+        
+    def closure():  
+        # 区域内部损失
+        r = Xf
+        fai = pred(r, stress)   
+        dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]   
+
+        J_dom = simpson_int(0.5/E*(1/r**2*dfaidr**2 + dfaidrr**2 - 2*nu/r*dfaidr*dfaidrr)*2*np.pi*r, r)
+        # calculate the complementary external energy
+        ra = torch.tensor([a],  requires_grad=True, device='cuda').unsqueeze(1)
+        rb = torch.tensor([b],  requires_grad=True, device='cuda').unsqueeze(1)
+        faia = pred(ra, stress)  
+        faib = pred(rb, stress)  
+        dfaidra = grad(faia, ra, retain_graph=True, create_graph=True)[0]
+        dfaidrb = grad(faib, rb, retain_graph=True, create_graph=True)[0]
+        J_ex = 2*np.pi*(-Ura*dfaidra + Urb*dfaidrb) # 计算外力余势
+   
+        loss = J_dom - J_ex 
+        optim.zero_grad()
+        loss.backward(retain_graph=True)
+        loss_array.append(loss.data.cpu())
+        loss_dom_array.append(J_dom.data.cpu())
+        loss_ex_array.append(J_ex.data.cpu())
+        if epoch == nepoch-1:
+            print()
+        r_numpy, pred_sigma_rr, pred_sigma_theta, pred_dis_r = evaluate_sigma_line(N_test)    
+        exact_sigma_rr = a**2/(b**2-a**2)*(1-b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r_numpy**2)*Po
+        exact_sigma_theta = a**2/(b**2-a**2)*(1+b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r_numpy**2)*Po     
+        exact_dis_r = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*r_numpy + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/r_numpy)
+        
+        L2_rr_error = np.linalg.norm(pred_sigma_rr.flatten() - exact_sigma_rr.flatten())/np.linalg.norm(exact_sigma_rr.flatten())
+        L2_theta_error = np.linalg.norm(pred_sigma_theta.flatten() - exact_sigma_theta.flatten())/np.linalg.norm(exact_sigma_theta.flatten())
+        L2_dis_r_error = np.linalg.norm(pred_dis_r.flatten() - exact_dis_r.flatten())/np.linalg.norm(exact_dis_r.flatten())
+        
+        error_sigma_rr_array_D.append(L2_rr_error)
+        error_sigma_theta_array_D.append(L2_theta_error)
+        error_dis_r_array_D.append(L2_dis_r_error)
+        if epoch%10==0:
+            print(' epoch : %i, the loss : %f, loss dom : %f, loss ex : %f' % \
+                  (epoch, loss.data, J_dom.data, J_ex.data))
+        return loss
+    optim.step(closure)
+r_numpy, predline_sigma_rr_DL, predline_sigma_theta_DL, predline_dis_r_DL = evaluate_sigma_line(N_test)
+
+# =============================================================================
+# DCM
+# =============================================================================
+    
+def dom_data(Nf):
+    '''
+    生成内部点，极坐标形式生成
+    '''
+    
+    # r = (b-a)*np.random.rand(Nf)+a
+    # theta = 2 * np.pi * np.random.rand(Nf) # 角度0到2*pi
+    r = np.linspace(a,b, Nf)
+    xy_dom = np.stack([r], 1)
+    xy_dom = torch.tensor(xy_dom,  requires_grad=True, device='cuda')
+    
+    return xy_dom
+
+
+class FNN(torch.nn.Module):
+    def __init__(self, D_in, H, D_out):
+        """
+        In the constructor we instantiate two nn.Linear modules and assign them as
+        member variables.
+        """
+        super(FNN, self).__init__()
+        self.linear1 = torch.nn.Linear(D_in, H)
+        self.linear2 = torch.nn.Linear(H, H)
+        self.linear3 = torch.nn.Linear(H, H)
+        self.linear4 = torch.nn.Linear(H, D_out)
+        
+        #self.a1 = torch.nn.Parameter(torch.Tensor([0.2]))
+        
+        # 有可能用到加速收敛技术
+        self.a1 = torch.Tensor([0.1]).cuda()
+        self.a2 = torch.Tensor([0.1])
+        self.a3 = torch.Tensor([0.1])
+        self.n = 1/self.a1.data.cuda()
+
+
+        torch.nn.init.normal_(self.linear1.weight, mean=0, std=np.sqrt(2/(D_in+H)))
+        torch.nn.init.normal_(self.linear2.weight, mean=0, std=np.sqrt(2/(H+H)))
+        torch.nn.init.normal_(self.linear3.weight, mean=0, std=np.sqrt(2/(H+H)))
+        torch.nn.init.normal_(self.linear4.weight, mean=0, std=np.sqrt(2/(H+D_out)))
+        
+        
+        torch.nn.init.normal_(self.linear1.bias, mean=0, std=1)
+        torch.nn.init.normal_(self.linear2.bias, mean=0, std=1)
+        torch.nn.init.normal_(self.linear3.bias, mean=0, std=1)
+        torch.nn.init.normal_(self.linear4.bias, mean=0, std=1)
+
+    def forward(self, x):
+        """
+        In the forward function we accept a Tensor of input data and we must return
+        a Tensor of output data. We can use Modules defined in the constructor as
+        well as arbitrary operators on Tensors.
+        """
+
+        y1 = torch.tanh(self.n*self.a1*self.linear1(x))
+        y2 = torch.tanh(self.n*self.a1*self.linear2(y1))
+        y3 = torch.tanh(self.n*self.a1*self.linear3(y2))
+        y = self.n*self.a1*self.linear4(y3)
+        return y
+
+def pred(xy):
+    '''
+    
+
+    Parameters
+    ----------
+    xy : tensor 
+        the coordinate of the input tensor.
+
+    Returns
+    the prediction of fai
+
+    '''
+
+    pred_fai = model(xy)
+    return pred_fai
+
+def evaluate_sigma(N_test):# calculate the prediction of the stress rr and theta
+# 分析sigma应力，输入坐标是极坐标r和theta
+    r = np.linspace(a, b, N_test)
+    theta = np.linspace(0, 2*np.pi, N_test) # y方向N_test个点
+    r_mesh, theta_mesh = np.meshgrid(r, theta)
+    xy = np.stack((r_mesh.flatten(), theta_mesh.flatten()), 1)
+    X_test = torch.tensor(xy,  requires_grad=True, device='cuda')
+    r = X_test[:, 0].unsqueeze(1)
+    # 将r输入到pred中，输出应力函数
+    fai = pred(r)
+    dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+    dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+    pred_sigma_rr = (1/r)*dfaidr # rr方向的正应力
+    pred_sigma_theta = dfaidrr # theta方向的正应力
+    pred_u_r = 1/E*(r*dfaidrr-nu*dfaidr)
+    
+    
+    pred_sigma_rr = pred_sigma_rr.data.cpu().numpy().reshape(N_test, N_test)
+    pred_sigma_theta = pred_sigma_theta.data.cpu().numpy().reshape(N_test, N_test)
+    pred_u_r = pred_u_r.data.cpu().numpy().reshape(N_test, N_test)
+    # sigma_r = a**2/(b**2-a**2)*(1-b**2/r**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r**2)*Po
+    # sigma_theta = a**2/(b**2-a**2)*(1+b**2/r**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r**2)*Po
+
+    return r_mesh, theta_mesh, pred_sigma_rr, pred_sigma_theta, pred_u_r
+
+def evaluate_sigma_line(N_test):# output the prediction of the stress rr and theta along radius in direction of r without theta
+    r_numpy = np.linspace(a, b, N_test) # generate the coordinate of r by numpy 
+    r = torch.tensor(r_numpy,  requires_grad=True, device='cuda').unsqueeze(1) # change the type of array to tensor used to be AD
+    fai = pred(r) # Input r to the pred function to get the necessary predition stress function
+    dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+    dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+    pred_sigma_rr = (1/r)*dfaidr # rr方向的正应力
+    pred_sigma_theta = dfaidrr # theta方向的正应力
+    pred_u_r = 1/E*(r*dfaidrr-nu*dfaidr)
+    pred_sigma_rr = pred_sigma_rr.data.cpu().numpy() # change the type of tensor to the array for the use of plotting
+    pred_sigma_theta = pred_sigma_theta.data.cpu().numpy()
+    pred_u_r = pred_u_r.data.cpu().numpy()
+    return r_numpy, pred_sigma_rr, pred_sigma_theta, pred_u_r
+# learning the homogenous network
+
+model = FNN(1, 20, 1).cuda() # input: r; output: Airy stress function
+optim = torch.optim.Adam(model.parameters(), lr= 0.001)
+step_scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=2000, gamma=0.1)
+loss_array = []
+loss_dom_array = []
+loss_ex_array = []
+error_sigma_rr_array = []
+error_sigma_theta_array = []
+error_dis_r_array = []
+nepoch = int(nepoch)
+start = time.time()
+Xf = dom_data(dom_num)
+for epoch in range(nepoch1):
+    if epoch == nepoch1-1:
+        end = time.time()
+        consume_time = end-start
+        print('time is %f' % consume_time)  
+        
+        
+    def closure():  
+        # 区域内部损失
+        r = Xf
+        fai = pred(r)  
+        dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]   
+
+        J_dom = simpson_int(0.5/E*(1/r**2*dfaidr**2 + dfaidrr**2 - 2*nu/r*dfaidr*dfaidrr)*2*np.pi*r, r)
+        # calculate the complementary external energy
+        ra = torch.tensor([a],  requires_grad=True, device='cuda').unsqueeze(1)
+        rb = torch.tensor([b],  requires_grad=True, device='cuda').unsqueeze(1)
+        faia = pred(ra)
+        faib = pred(rb)
+        dfaidra = grad(faia, ra, retain_graph=True, create_graph=True)[0]
+        dfaidrb = grad(faib, rb, retain_graph=True, create_graph=True)[0]
+        J_ex = 2*np.pi*(-Ura*dfaidra + Urb*dfaidrb) # 计算外力余势
+   
+        loss = J_dom - J_ex 
+        optim.zero_grad()
+        loss.backward(retain_graph=True)
+        loss_array.append(loss.data.cpu())
+        loss_dom_array.append(J_dom.data.cpu())
+        loss_ex_array.append(J_ex.data.cpu())
+        if epoch == nepoch-1:
+            print()
+        r_numpy, pred_sigma_rr, pred_sigma_theta, pred_dis_r = evaluate_sigma_line(N_test)    
+        exact_sigma_rr = a**2/(b**2-a**2)*(1-b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r_numpy**2)*Po
+        exact_sigma_theta = a**2/(b**2-a**2)*(1+b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r_numpy**2)*Po     
+        exact_dis_r = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*r_numpy + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/r_numpy)
+        
+        L2_rr_error = np.linalg.norm(pred_sigma_rr.flatten() - exact_sigma_rr.flatten())/np.linalg.norm(exact_sigma_rr.flatten())
+        L2_theta_error = np.linalg.norm(pred_sigma_theta.flatten() - exact_sigma_theta.flatten())/np.linalg.norm(exact_sigma_theta.flatten())
+        L2_dis_r_error = np.linalg.norm(pred_dis_r.flatten() - exact_dis_r.flatten())/np.linalg.norm(exact_dis_r.flatten())
+        
+        error_sigma_rr_array.append(L2_rr_error)
+        error_sigma_theta_array.append(L2_theta_error)
+        error_dis_r_array.append(L2_dis_r_error)
+        if epoch%10==0:
+            print(' epoch : %i, the loss : %f, loss dom : %f, loss ex : %f' % \
+                  (epoch, loss.data, J_dom.data, J_ex.data))
+        return loss
+    optim.step(closure)
+    step_scheduler.step()
+r_mesh, theta_mesh, pred_sigma_rr_10, pred_sigma_theta_10, pred_dis_r_10 = evaluate_sigma(N_test) 
+
+for epoch in range(nepoch2):
+    if epoch == nepoch2-1:
+        end = time.time()
+        consume_time = end-start
+        print('time is %f' % consume_time)
+
+        
+    def closure():  
+        # 区域内部损失
+        r = Xf
+        fai = pred(r)  
+        dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]   
+
+        J_dom = simpson_int(0.5/E*(1/r**2*dfaidr**2 + dfaidrr**2 - 2*nu/r*dfaidr*dfaidrr)*2*np.pi*r, r)
+        # calculate the complementary external energy
+        ra = torch.tensor([a],  requires_grad=True, device='cuda').unsqueeze(1)
+        rb = torch.tensor([b],  requires_grad=True, device='cuda').unsqueeze(1)
+        faia = pred(ra)
+        faib = pred(rb)
+        dfaidra = grad(faia, ra, retain_graph=True, create_graph=True)[0]
+        dfaidrb = grad(faib, rb, retain_graph=True, create_graph=True)[0]
+        J_ex = 2*np.pi*(-Ura*dfaidra + Urb*dfaidrb) # 计算外力余势
+   
+        loss = J_dom - J_ex 
+        optim.zero_grad()
+        loss.backward(retain_graph=True)
+        loss_array.append(loss.data.cpu())
+        loss_dom_array.append(J_dom.data.cpu())
+        loss_ex_array.append(J_ex.data.cpu())
+        if epoch == nepoch-1:
+            print()
+        r_numpy, pred_sigma_rr, pred_sigma_theta, pred_dis_r = evaluate_sigma_line(N_test)    
+        exact_sigma_rr = a**2/(b**2-a**2)*(1-b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r_numpy**2)*Po
+        exact_sigma_theta = a**2/(b**2-a**2)*(1+b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r_numpy**2)*Po     
+        exact_dis_r = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*r_numpy + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/r_numpy)
+        
+        L2_rr_error = np.linalg.norm(pred_sigma_rr.flatten() - exact_sigma_rr.flatten())/np.linalg.norm(exact_sigma_rr.flatten())
+        L2_theta_error = np.linalg.norm(pred_sigma_theta.flatten() - exact_sigma_theta.flatten())/np.linalg.norm(exact_sigma_theta.flatten())
+        L2_dis_r_error = np.linalg.norm(pred_dis_r.flatten() - exact_dis_r.flatten())/np.linalg.norm(exact_dis_r.flatten())
+        
+        error_sigma_rr_array.append(L2_rr_error)
+        error_sigma_theta_array.append(L2_theta_error)
+        error_dis_r_array.append(L2_dis_r_error)
+        if epoch%10==0:
+            print(' epoch : %i, the loss : %f, loss dom : %f, loss ex : %f' % \
+                  (epoch, loss.data, J_dom.data, J_ex.data))
+        return loss
+    optim.step(closure)
+    step_scheduler.step()
+r_mesh, theta_mesh, pred_sigma_rr_30, pred_sigma_theta_30, pred_dis_r_30 = evaluate_sigma(N_test) 
+
+for epoch in range(nepoch3):
+    if epoch == nepoch3-1:
+        end = time.time()
+        consume_time = end-start
+        print('time is %f' % consume_time)
+
+        
+    def closure():  
+        # 区域内部损失
+        r = Xf
+        fai = pred(r)  
+        dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]   
+
+        J_dom = simpson_int(0.5/E*(1/r**2*dfaidr**2 + dfaidrr**2 - 2*nu/r*dfaidr*dfaidrr)*2*np.pi*r, r)
+        # calculate the complementary external energy
+        ra = torch.tensor([a],  requires_grad=True, device='cuda').unsqueeze(1)
+        rb = torch.tensor([b],  requires_grad=True, device='cuda').unsqueeze(1)
+        faia = pred(ra)
+        faib = pred(rb)
+        dfaidra = grad(faia, ra, retain_graph=True, create_graph=True)[0]
+        dfaidrb = grad(faib, rb, retain_graph=True, create_graph=True)[0]
+        J_ex = 2*np.pi*(-Ura*dfaidra + Urb*dfaidrb) # 计算外力余势
+   
+        loss = J_dom - J_ex 
+        optim.zero_grad()
+        loss.backward(retain_graph=True)
+        loss_array.append(loss.data.cpu())
+        loss_dom_array.append(J_dom.data.cpu())
+        loss_ex_array.append(J_ex.data.cpu())
+        if epoch == nepoch-1:
+            print()
+        r_numpy, pred_sigma_rr, pred_sigma_theta, pred_dis_r = evaluate_sigma_line(N_test)    
+        exact_sigma_rr = a**2/(b**2-a**2)*(1-b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r_numpy**2)*Po
+        exact_sigma_theta = a**2/(b**2-a**2)*(1+b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r_numpy**2)*Po     
+        exact_dis_r = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*r_numpy + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/r_numpy)
+        
+        L2_rr_error = np.linalg.norm(pred_sigma_rr.flatten() - exact_sigma_rr.flatten())/np.linalg.norm(exact_sigma_rr.flatten())
+        L2_theta_error = np.linalg.norm(pred_sigma_theta.flatten() - exact_sigma_theta.flatten())/np.linalg.norm(exact_sigma_theta.flatten())
+        L2_dis_r_error = np.linalg.norm(pred_dis_r.flatten() - exact_dis_r.flatten())/np.linalg.norm(exact_dis_r.flatten())
+        
+        error_sigma_rr_array.append(L2_rr_error)
+        error_sigma_theta_array.append(L2_theta_error)
+        error_dis_r_array.append(L2_dis_r_error)
+        if epoch%10==0:
+            print(' epoch : %i, the loss : %f, loss dom : %f, loss ex : %f' % \
+                  (epoch, loss.data, J_dom.data, J_ex.data))
+        return loss
+    optim.step(closure)
+    step_scheduler.step()
+r_mesh, theta_mesh, pred_sigma_rr_50, pred_sigma_theta_50, pred_dis_r_50 = evaluate_sigma(N_test) 
+r_numpy, predline_sigma_rr_50L, predline_sigma_theta_50L, predline_dis_r_50L = evaluate_sigma_line(N_test)
+
+
+for epoch in range(nepoch):
+    if epoch == nepoch-1:
+        end = time.time()
+        consume_time = end-start
+        print('time is %f' % consume_time)
+
+        
+    def closure():  
+        # 区域内部损失
+        r = Xf
+        fai = pred(r)  
+        dfaidr = grad(fai, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        dfaidrr = grad(dfaidr, r, torch.ones(r.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]   
+
+        J_dom = simpson_int(0.5/E*(1/r**2*dfaidr**2 + dfaidrr**2 - 2*nu/r*dfaidr*dfaidrr)*2*np.pi*r, r)
+        # calculate the complementary external energy
+        ra = torch.tensor([a],  requires_grad=True, device='cuda').unsqueeze(1)
+        rb = torch.tensor([b],  requires_grad=True, device='cuda').unsqueeze(1)
+        faia = pred(ra)
+        faib = pred(rb)
+        dfaidra = grad(faia, ra, retain_graph=True, create_graph=True)[0]
+        dfaidrb = grad(faib, rb, retain_graph=True, create_graph=True)[0]
+        J_ex = 2*np.pi*(-Ura*dfaidra + Urb*dfaidrb) # 计算外力余势
+   
+        loss = J_dom - J_ex 
+        optim.zero_grad()
+        loss.backward(retain_graph=True)
+        loss_array.append(loss.data.cpu())
+        loss_dom_array.append(J_dom.data.cpu())
+        loss_ex_array.append(J_ex.data.cpu())
+        if epoch == nepoch-1:
+            print()
+        r_numpy, pred_sigma_rr, pred_sigma_theta, pred_dis_r = evaluate_sigma_line(N_test)    
+        exact_sigma_rr = a**2/(b**2-a**2)*(1-b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r_numpy**2)*Po
+        exact_sigma_theta = a**2/(b**2-a**2)*(1+b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r_numpy**2)*Po     
+        exact_dis_r = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*r_numpy + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/r_numpy)
+        
+        L2_rr_error = np.linalg.norm(pred_sigma_rr.flatten() - exact_sigma_rr.flatten())/np.linalg.norm(exact_sigma_rr.flatten())
+        L2_theta_error = np.linalg.norm(pred_sigma_theta.flatten() - exact_sigma_theta.flatten())/np.linalg.norm(exact_sigma_theta.flatten())
+        L2_dis_r_error = np.linalg.norm(pred_dis_r.flatten() - exact_dis_r.flatten())/np.linalg.norm(exact_dis_r.flatten())
+        
+        error_sigma_rr_array.append(L2_rr_error)
+        error_sigma_theta_array.append(L2_theta_error)
+        error_dis_r_array.append(L2_dis_r_error)
+        if epoch%10==0:
+            print(' epoch : %i, the loss : %f, loss dom : %f, loss ex : %f' % \
+                  (epoch, loss.data, J_dom.data, J_ex.data))
+        return loss
+    optim.step(closure)
+    step_scheduler.step()
+r_numpy, predline_sigma_rr_L, predline_sigma_theta_L, predline_dis_r_L = evaluate_sigma_line(N_test)
+
+
+#%%
+exact_sigma_rr = a**2/(b**2-a**2)*(1-b**2/r_mesh**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r_mesh**2)*Po
+exact_sigma_theta = a**2/(b**2-a**2)*(1+b**2/r_mesh**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r_mesh**2)*Po  
+exact_dis_r = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*r_mesh + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/r_mesh)
+# =============================================================================
+# plot the contouf of the sigma
+# =============================================================================
+x_mesh = r_mesh * np.cos(theta_mesh)
+y_mesh = r_mesh * np.sin(theta_mesh)
+# =============================================================================
+# 10
+# =============================================================================
+
+# zx最小余能误差
+h1 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_rr_10 - exact_sigma_rr),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h1).ax.set_title(r'$\sigma_{rr}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# zy最小余能误差
+h2 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_theta_10 - exact_sigma_theta),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h2).ax.set_title(r'$\sigma_{\theta\theta}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+
+# dis_r最小余能误差
+h3 = plt.contourf(x_mesh, y_mesh, np.abs(pred_dis_r_10 - exact_dis_r),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h3).ax.set_title(r'$u_{r}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+
+h4 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_rr_10D - exact_sigma_rr),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h4).ax.set_title(r'$\sigma_{rr}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# zy最小余能误差
+h5 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_theta_10D - exact_sigma_theta),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h5).ax.set_title(r'$\sigma_{\theta\theta}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# dis_r最小余能误差
+h6 = plt.contourf(x_mesh, y_mesh, np.abs(pred_dis_r_10D - exact_dis_r),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h6).ax.set_title(r'$u_{r}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+
+# =============================================================================
+# 30
+# =============================================================================
+
+# zx最小余能误差
+h1 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_rr_30 - exact_sigma_rr),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h1).ax.set_title(r'$\sigma_{rr}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# zy最小余能误差
+h2 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_theta_30 - exact_sigma_theta),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h2).ax.set_title(r'$\sigma_{\theta\theta}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# dis_r最小余能误差
+h3 = plt.contourf(x_mesh, y_mesh, np.abs(pred_dis_r_30 - exact_dis_r),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h3).ax.set_title(r'$u_{r}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+h4 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_rr_30D - exact_sigma_rr),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h4).ax.set_title(r'$\sigma_{rr}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# zy最小余能误差
+h5 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_theta_30D - exact_sigma_theta),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h5).ax.set_title(r'$\sigma_{\theta\theta}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# dis_r最小余能误差
+h6 = plt.contourf(x_mesh, y_mesh, np.abs(pred_dis_r_30D - exact_dis_r),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h6).ax.set_title(r'$u_{r}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+
+# =============================================================================
+# 50
+# =============================================================================
+
+# zx最小余能误差
+h1 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_rr_50 - exact_sigma_rr),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h1).ax.set_title(r'$\sigma_{rr}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# zy最小余能误差
+h2 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_theta_50 - exact_sigma_theta),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h2).ax.set_title(r'$\sigma_{\theta\theta}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# dis_r最小余能误差
+h3 = plt.contourf(x_mesh, y_mesh, np.abs(pred_dis_r_50 - exact_dis_r),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h3).ax.set_title(r'$u_{r}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+h4 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_rr_50D - exact_sigma_rr),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h4).ax.set_title(r'$\sigma_{rr}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# zy最小余能误差
+h5 = plt.contourf(x_mesh, y_mesh, np.abs(pred_sigma_theta_50D - exact_sigma_theta),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h5).ax.set_title(r'$\sigma_{\theta\theta}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+# dis_r最小余能误差
+h6 = plt.contourf(x_mesh, y_mesh, np.abs(pred_dis_r_50D - exact_dis_r),  cmap = 'jet', levels = 100)
+ax = plt.gca()
+ax.set_aspect(1)
+plt.colorbar(h6).ax.set_title(r'$u_{r}$', fontsize=13)
+plt.xlabel('x', fontsize=13)
+plt.ylabel('y', fontsize=13)
+plt.show()
+#%% 
+# =============================================================================
+# plot line sigma_rr and theta
+# =============================================================================
+exactline_sigma_rr = a**2/(b**2-a**2)*(1-b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1-a**2/r_numpy**2)*Po
+exactline_sigma_theta = a**2/(b**2-a**2)*(1+b**2/r_numpy**2)*Pi - b**2/(b**2-a**2)*(1+a**2/r_numpy**2)*Po
+exactline_dis_r = 1/E*((1-nu)*(a**2*Pi-b**2*Po)/(b**2-a**2)*r_numpy + (1+nu)*(a**2*b**2)*(Pi-Po)/(b**2-a**2)/r_numpy)
+
+
+plt.plot(r_numpy, exactline_sigma_rr, color = 'r')
+plt.scatter(r_numpy[::2], predline_sigma_rr_50L[::2], marker = '*')
+plt.scatter(r_numpy[::2], predline_sigma_rr_50DL[::2], marker = 'v')
+plt.scatter(r_numpy[::2], predline_sigma_rr_L[::2], marker = 'o')
+plt.scatter(r_numpy[::2], predline_sigma_rr_DL[::2], marker = 'p')
+plt.xlabel('r', fontsize=13)
+plt.ylabel(r'$\sigma_{rr}$', fontsize=13)
+plt.legend(['Exact', 'DCEM_%i' % (nepoch1+nepoch2+nepoch3), 'DCEM-O_%i' % (nepoch1+nepoch2+nepoch3), 'DCEM_%i' % nepoch, 'DCEM-O_%i' % nepoch])
+plt.show()
+
+plt.plot(r_numpy, exactline_sigma_theta, color = 'r')
+plt.scatter(r_numpy[::2], predline_sigma_theta_50L[::2], marker = '*')
+plt.scatter(r_numpy[::2], predline_sigma_theta_50DL[::2], marker = 'v')
+plt.scatter(r_numpy[::2], predline_sigma_theta_L[::2], marker = 'o')
+plt.scatter(r_numpy[::2], predline_sigma_theta_DL[::2], marker = 'p')
+plt.xlabel('r', fontsize=13)
+plt.ylabel(r'$\sigma_{\theta\theta}$', fontsize=13)
+plt.legend(['Exact', 'DCEM_%i' % (nepoch1+nepoch2+nepoch3), 'DCEM-O_%i' % (nepoch1+nepoch2+nepoch3), 'DCEM_%i' % nepoch, 'DCEM-O_%i' % nepoch])
+plt.show()
+
+plt.plot(r_numpy, exactline_dis_r, color = 'r')
+plt.scatter(r_numpy[::2], predline_dis_r_50L[::2], marker = '*')
+plt.scatter(r_numpy[::2], predline_dis_r_50DL[::2], marker = 'v')
+plt.scatter(r_numpy[::2], predline_dis_r_L[::2], marker = 'o')
+plt.scatter(r_numpy[::2], predline_dis_r_DL[::2], marker = 'p')
+plt.xlabel('r', fontsize=13)
+plt.ylabel(r'$u_{r}$', fontsize=13)
+plt.legend(['Exact', 'DCEM_%i' % (nepoch1+nepoch2+nepoch3), 'DCEM-O_%i' % (nepoch1+nepoch2+nepoch3), 'DCEM_%i' % nepoch, 'DCEM-O_%i' % nepoch])
+plt.show()
+
+#%% error L2
+end = 300
+plt.plot(error_sigma_rr_array[:end], ls = ':')
+plt.plot(error_sigma_rr_array_D[:end], linestyle='--')
+plt.xlabel('Training steps', fontsize=13)
+plt.ylabel(r'$\mathcal{L}_{2}^{rel}$ error', fontsize=13)
+plt.yscale('log')
+plt.legend(['DCEM', 'DCEM-O'])
+plt.show()
+
+plt.plot(error_sigma_theta_array[:end], ls = ':')
+plt.plot(error_sigma_theta_array_D[:end], linestyle='--')
+plt.xlabel('Training steps', fontsize=13)
+plt.ylabel(r'$\mathcal{L}_{2}^{rel}$ error', fontsize=13)
+plt.yscale('log')
+plt.legend(['DCEM', 'DCEM-O'])
+plt.show()
+
+
+plt.plot(error_dis_r_array[:end], ls = ':')
+plt.plot(error_dis_r_array_D[:end], linestyle='--')
+plt.xlabel('Training steps', fontsize=13)
+plt.ylabel(r'$\mathcal{L}_{2}^{rel}$ error', fontsize=13)
+plt.yscale('log')
+plt.legend(['DCEM', 'DCEM-O'])
+plt.show()

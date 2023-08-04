@@ -1246,7 +1246,7 @@ loss2_array = []
 error_array = []
 eigvalues = []
 nepoch_u0 = int(nepoch_u0)
-start = time.time()
+time_CENN_start = time.time()   
 for epoch_inter in range(nepoch_inter): # 两个神经网络交错优化
     print('the process : %i' % epoch_inter) # 交错优化的步骤数
     for epoch in range(nepoch_u0): # 两个一起优化
@@ -1354,7 +1354,8 @@ for epoch_inter in range(nepoch_inter): # 两个神经网络交错优化
             return loss
         optim_h1.step(closure)
         scheduler1.step() 
-
+time_CENN_end = time.time()   
+time_CENN = time_CENN_end - time_CENN_start  
 n_test = 300
 dom_koch_n = koch_points.get_koch_points_lin(n_test) # 获得n_test个koch的随机分布点
 xy_test= torch.tensor(dom_koch_n,  requires_grad=True, device = 'cuda') # 将numpy数据转化为tensor
@@ -1428,6 +1429,269 @@ dudy = dudxy[:, 1].unsqueeze(1).data.cpu().numpy()
 # dudx_cenn[y0[:, 0]<0] = -dudx_cenn[y0[:, 0]<0] # y小于0的导数添加负号
 
 # =============================================================================
+# CPINN_RBF
+# =============================================================================
+model_h1 = homo(2, 20, 1).cuda()
+model_h2 = homo(2, 20, 1).cuda()
+criterion = torch.nn.MSELoss()
+optim_h = torch.optim.Adam(params=chain(model_h1.parameters(), model_h2.parameters()), lr= 0.001) # 0.001比较好，两个神经网络
+optim_h1 = torch.optim.Adam(params=model_h1.parameters(), lr= 0.001) # 0.001比较好，神经网络1
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optim_h, milestones=[1000, 3000, 5000], gamma = 0.1)
+scheduler1 = torch.optim.lr_scheduler.MultiStepLR(optim_h1, milestones=[1000, 3000, 5000], gamma = 0.1)
+loss_array = []
+loss1_array = []
+loss2_array = []
+error_array = []
+eigvalues = []
+nepoch_u0 = int(nepoch_u0)
+time_CPINN_RBF_start = time.time()   
+for epoch_inter in range(nepoch_inter): # 两个神经网络交错优化
+    print('the process : %i' % epoch_inter) # 交错优化的步骤数
+    for epoch in range(nepoch_u0): # 两个一起优化
+        if epoch ==1000:
+            end = time.time()
+            consume_time = end-start
+            print('time is %f' % consume_time)
+        if epoch%100 == 0:
+            dom_koch_n = koch_points.get_koch_points(10000) # 获得n_test个koch的随机分布点
+            dom_koch_n1 = dom_koch_n[(dom_koch_n[:,0]**2+dom_koch_n[:,1]**2)<r0**2]#定义内部的dom点，即是r<r0的点
+            dom_koch_n2 = dom_koch_n[(dom_koch_n[:,0]**2+dom_koch_n[:,1]**2)>=r0**2]#定义内部的dom点，即是r<r0的点
+            dom_koch_t1= torch.tensor(dom_koch_n1,  requires_grad=True, device = 'cuda') # 将numpy数据转化为tensor
+            dom_koch_t2= torch.tensor(dom_koch_n2,  requires_grad=True, device = 'cuda') # 将numpy数据转化为tensor
+            f1 = -16 * torch.norm(dom_koch_t1, dim = 1, keepdim=True).data**2 # 定义体力 
+            f2 = -16 * torch.norm(dom_koch_t2, dim = 1, keepdim=True).data**2 # 定义体力
+            Xi = interface(1000)
+        def closure():  
+    
+            # 构造可能位移场
+            u_pred1 = pred(dom_koch_t1)
+            u_pred2 = pred(dom_koch_t2)
+            
+            du1dxy = grad(u_pred1, dom_koch_t1, torch.ones(dom_koch_t1.size()[0], 1).cuda(), create_graph=True)[0]
+            du1dx = du1dxy[:, 0].unsqueeze(1)
+            du1dy = du1dxy[:, 1].unsqueeze(1)
+
+            du1dxxy = grad(du1dx, dom_koch_t1, torch.ones(dom_koch_t1.size()[0], 1).cuda(), create_graph=True)[0]
+            du1dxx = du1dxxy[:, 0].unsqueeze(1)
+            du1dxy = du1dxxy[:, 1].unsqueeze(1)
+
+            du1dyxy = grad(du1dy, dom_koch_t1, torch.ones(dom_koch_t1.size()[0], 1).cuda(), create_graph=True)[0]
+            du1dyx = du1dyxy[:, 0].unsqueeze(1)
+            du1dyy = du1dyxy[:, 1].unsqueeze(1)
+    
+            du2dxy = grad(u_pred2, dom_koch_t2, torch.ones(dom_koch_t2.size()[0], 1).cuda(), create_graph=True)[0]
+            du2dx = du2dxy[:, 0].unsqueeze(1)
+            du2dy = du2dxy[:, 1].unsqueeze(1)
+
+            du2dxy = grad(u_pred2, dom_koch_t2, torch.ones(dom_koch_t2.size()[0], 1).cuda(), create_graph=True)[0]
+            du2dx = du2dxy[:, 0].unsqueeze(1)
+            du2dy = du2dxy[:, 1].unsqueeze(1)
+
+            du2dxxy = grad(du2dx, dom_koch_t2, torch.ones(dom_koch_t2.size()[0], 1).cuda(), create_graph=True)[0]
+            du2dxx = du2dxxy[:, 0].unsqueeze(1)
+            du2dxy = du2dxxy[:, 1].unsqueeze(1)
+
+            du2dyxy = grad(du2dy, dom_koch_t2, torch.ones(dom_koch_t2.size()[0], 1).cuda(), create_graph=True)[0]
+            du2dyx = du2dyxy[:, 0].unsqueeze(1)
+            du2dyy = du2dyxy[:, 1].unsqueeze(1)
+    
+            J1 =  torch.sum((a1 * (du1dxx + du1dyy)+f1)**2)/len(du1dxx)
+            
+            J2 =  torch.sum((a2 * (du2dxx + du2dyy)+f2)**2)/len(du2dxx)
+            J = J2
+            # 添加交界面的损失函数
+            u_i1 = model_h1(Xi)  # 内部网络的交界面预测
+            u_i2 = model_p(Xi)  + RBF(Xi)*model_h2(Xi)  # 外部网络的交界面预测
+            Ji = criterion(u_i1, u_i2)
+
+            # 添加交界面的导数的预测
+            du1dxyi = grad(u_i1, Xi, torch.ones(Xi.size()[0], 1).cuda(), create_graph=True)[0]
+            du1dxi = du1dxyi[:, 0].unsqueeze(1)
+            du1dyi = du1dxyi[:, 1].unsqueeze(1)
+   
+            du2dxyi = grad(u_i2, Xi, torch.ones(Xi.size()[0], 1).cuda(), create_graph=True)[0]
+            du2dxi = du2dxyi[:, 0].unsqueeze(1)
+            du2dyi = du2dxyi[:, 1].unsqueeze(1)
+            
+            di1 = a1 * (Xi[:, 0].unsqueeze(1)*du1dxi + Xi[:, 1].unsqueeze(1)*du1dyi)/torch.norm(Xi, dim=1, keepdim=True)
+            di2 = a2 * (Xi[:, 0].unsqueeze(1)*du2dxi + Xi[:, 1].unsqueeze(1)*du2dyi)/torch.norm(Xi, dim=1, keepdim=True)
+            Jdi = criterion(di1, di2)
+                         
+            loss = J + b3*(Ji+Jdi)
+            error_t = evaluate()
+            optim_h.zero_grad()
+            loss.backward()
+            loss1_array.append(J1.data.cpu())
+            loss2_array.append(J2.data.cpu())
+            loss_array.append(loss.data.cpu())
+            error_array.append(error_t.data.cpu())
+    
+            if epoch%10==0:
+                print(' epoch : %i, the loss : %f , loss1 : %f, loss2 : %f, inter : %f, error : %f' % (epoch, loss.data, J1.data, J2.data, Ji.data, error_t.data))
+            return loss
+        optim_h.step(closure)
+        scheduler.step()
+        # 网络1损失函数下不去，所以我们用交界面来作为本质边界条件训练网络1
+    for epoch in range(nepoch_u1): #固定网络2，优化网络2
+        if epoch ==1000:
+            end = time.time()
+            consume_time = end-start
+            print('time is %f' % consume_time)
+        if epoch%100 == 0:
+            dom_koch_n = koch_points.get_koch_points(10000) # 获得n_test个koch的随机分布点
+            dom_koch_n1 = dom_koch_n[(dom_koch_n[:,0]**2+dom_koch_n[:,1]**2)<r0**2]#定义内部的dom点，即是r<r0的点
+            dom_koch_n2 = dom_koch_n[(dom_koch_n[:,0]**2+dom_koch_n[:,1]**2)>=r0**2]#定义内部的dom点，即是r<r0的点
+            dom_koch_t1= torch.tensor(dom_koch_n1,  requires_grad=True, device = 'cuda') # 将numpy数据转化为tensor
+            dom_koch_t2= torch.tensor(dom_koch_n2,  requires_grad=True, device = 'cuda') # 将numpy数据转化为tensor
+            f1 = -16 * torch.norm(dom_koch_t1, dim = 1, keepdim=True).data**2 # 定义体力 
+            f2 = -16 * torch.norm(dom_koch_t2, dim = 1, keepdim=True).data**2 # 定义体力
+            Xi = interface(1000)
+        def closure():  
+    
+    
+            # 构造可能位移场
+            u_pred1 = pred(dom_koch_t1)
+            u_pred2 = pred(dom_koch_t2)
+            
+            du1dxy = grad(u_pred1, dom_koch_t1, torch.ones(dom_koch_t1.size()[0], 1).cuda(), create_graph=True)[0]
+            du1dx = du1dxy[:, 0].unsqueeze(1)
+            du1dy = du1dxy[:, 1].unsqueeze(1)
+
+            du1dxxy = grad(du1dx, dom_koch_t1, torch.ones(dom_koch_t1.size()[0], 1).cuda(), create_graph=True)[0]
+            du1dxx = du1dxxy[:, 0].unsqueeze(1)
+            du1dxy = du1dxxy[:, 1].unsqueeze(1)
+
+            du1dyxy = grad(du1dy, dom_koch_t1, torch.ones(dom_koch_t1.size()[0], 1).cuda(), create_graph=True)[0]
+            du1dyx = du1dyxy[:, 0].unsqueeze(1)
+            du1dyy = du1dyxy[:, 1].unsqueeze(1)
+    
+            du2dxy = grad(u_pred2, dom_koch_t2, torch.ones(dom_koch_t2.size()[0], 1).cuda(), create_graph=True)[0]
+            du2dx = du2dxy[:, 0].unsqueeze(1)
+            du2dy = du2dxy[:, 1].unsqueeze(1)
+
+            du2dxy = grad(u_pred2, dom_koch_t2, torch.ones(dom_koch_t2.size()[0], 1).cuda(), create_graph=True)[0]
+            du2dx = du2dxy[:, 0].unsqueeze(1)
+            du2dy = du2dxy[:, 1].unsqueeze(1)
+
+            du2dxxy = grad(du2dx, dom_koch_t2, torch.ones(dom_koch_t2.size()[0], 1).cuda(), create_graph=True)[0]
+            du2dxx = du2dxxy[:, 0].unsqueeze(1)
+            du2dxy = du2dxxy[:, 1].unsqueeze(1)
+
+            du2dyxy = grad(du2dy, dom_koch_t2, torch.ones(dom_koch_t2.size()[0], 1).cuda(), create_graph=True)[0]
+            du2dyx = du2dyxy[:, 0].unsqueeze(1)
+            du2dyy = du2dyxy[:, 1].unsqueeze(1)
+    
+            J1 =  torch.sum((a1 * (du1dxx + du1dyy)+f1)**2)/len(du1dxx)
+            
+            J2 =  torch.sum((a2 * (du2dxx + du2dyy)+f2)**2)/len(du2dxx)
+            J = J1
+            # 添加交界面的损失函数
+            u_i1 = model_h1(Xi)  # 内部网络的交界面预测
+            u_i2 = model_p(Xi)  + RBF(Xi)*model_h2(Xi)  # 外部网络的交界面预测
+            Ji = criterion(u_i1, u_i2)
+
+            # 添加交界面的导数的预测
+            du1dxyi = grad(u_i1, Xi, torch.ones(Xi.size()[0], 1).cuda(), create_graph=True)[0]
+            du1dxi = du1dxyi[:, 0].unsqueeze(1)
+            du1dyi = du1dxyi[:, 1].unsqueeze(1)
+   
+            du2dxyi = grad(u_i2, Xi, torch.ones(Xi.size()[0], 1).cuda(), create_graph=True)[0]
+            du2dxi = du2dxyi[:, 0].unsqueeze(1)
+            du2dyi = du2dxyi[:, 1].unsqueeze(1)
+            
+            di1 = a1 * (Xi[:, 0].unsqueeze(1)*du1dxi + Xi[:, 1].unsqueeze(1)*du1dyi)/torch.norm(Xi, dim=1, keepdim=True)
+            di2 = a2 * (Xi[:, 0].unsqueeze(1)*du2dxi + Xi[:, 1].unsqueeze(1)*du2dyi)/torch.norm(Xi, dim=1, keepdim=True)
+            Jdi = criterion(di1, di2)
+                         
+            loss = J + b3*(Ji+Jdi)
+            error_t = evaluate()
+            optim_h.zero_grad()
+            loss.backward()
+            loss1_array.append(J1.data.cpu())
+            loss2_array.append(J2.data.cpu())
+            loss_array.append(loss.data.cpu())
+            error_array.append(error_t.data.cpu())
+    
+            if epoch%10==0:
+                print(' epoch : %i, the loss : %f , loss1 : %f, loss2 : %f, inter : %f, error : %f' % (epoch, loss.data, J1.data, J2.data, Ji.data, error_t.data))
+            return loss
+        optim_h1.step(closure)
+        scheduler1.step() 
+time_CPINN_RBF_end = time.time()    
+time_CPINN_RBF = time_CPINN_RBF_end - time_CPINN_RBF_start    
+n_test = 300
+dom_koch_n = koch_points.get_koch_points_lin(n_test) # 获得n_test个koch的随机分布点
+xy_test= torch.tensor(dom_koch_n,  requires_grad=True, device = 'cuda') # 将numpy数据转化为tensor
+
+
+u_pred = pred(xy_test)
+u_pred_rao = u_pred.data.cpu()
+
+u_exact = np.zeros((len(dom_koch_n) ,1))
+u_exact[(dom_koch_n[:,0]**2+dom_koch_n[:,1]**2)<r0**2] = 1/a1*np.linalg.norm(dom_koch_n[(dom_koch_n[:,0]**2+dom_koch_n[:,1]**2)<r0**2], axis=1, keepdims=True)**4 # 现在网格里面赋值
+u_exact[(dom_koch_n[:,0]**2+dom_koch_n[:,1]**2)>=r0**2] = 1/a2*np.linalg.norm(dom_koch_n[(dom_koch_n[:,0]**2+dom_koch_n[:,1]**2)>=r0**2], axis=1, keepdims=True)**4 + r0**4*(1/a1-1/a2) # 现在网格外面赋值
+
+u_exact = torch.from_numpy(u_exact) # 将精确解从array变成tensor
+
+error_rao = torch.abs(u_pred_rao - u_exact) # get the error in every points
+error_t_rao = torch.norm(error_rao)/torch.norm(u_exact) # get the total relative L2 error
+
+Xb =  koch.point_bound(5)
+Xf = koch_points.get_koch_points(10000)
+
+write_arr2DVTK('./output_ntk/pred_energy_rao%i' % dd, dom_koch_n, u_pred_rao, 'pred_energy_rao')
+
+write_arr2DVTK('./output_ntk/error_energy_rao%i' % dd, dom_koch_n, error_rao, 'error_energy_rao')
+
+loss1_array_rao = np.array(loss1_array)
+loss2_array_rao = np.array(loss2_array)
+
+error_array_rao = np.array(error_array)
+
+n_test = 100
+x0 = np.zeros((n_test, 2))
+x0[:, 1] = np.linspace(0, np.sqrt(3), 100)
+exactx0 = np.zeros((n_test, 1))
+exactx0[np.linalg.norm(x0, axis=1)<r0] =  1/a1*np.linalg.norm(x0[np.linalg.norm(x0, axis=1)<r0], axis=1, keepdims=True)**4 # 不同的区域进行不同的解析解赋予
+exactx0[np.linalg.norm(x0, axis=1)>=r0] =  1/a2*np.linalg.norm(x0[np.linalg.norm(x0, axis=1)>=r0], axis=1, keepdims=True)**4 + (1/a1-1/a2)*r0**4
+x0t = torch.tensor(x0)
+predx0_rao = pred(x0t).data.cpu().numpy() # 预测x=0的原函数
+
+n_test = 100
+y0 = np.zeros((n_test, 2))
+y0[:, 0] = np.linspace(0, 1, 100)
+exacty0 = np.zeros((n_test, 1))
+exacty0[np.linalg.norm(y0, axis=1)<r0] =  1/a1*np.linalg.norm(y0[np.linalg.norm(y0, axis=1)<r0], axis=1, keepdims=True)**4 # 不同的区域进行不同的解析解赋予
+exacty0[np.linalg.norm(y0, axis=1)>=r0] =  1/a2*np.linalg.norm(y0[np.linalg.norm(y0, axis=1)>=r0], axis=1, keepdims=True)**4 + (1/a1-1/a2)*r0**4
+y0t = torch.tensor(y0)
+predy0_rao = pred(y0t).data.cpu().numpy() # 预测x=0的原函数
+
+x0 = np.zeros((n_test, 2))
+x0[:, 1] = np.linspace(0, np.sqrt(3), 100)
+exactdx0 = np.zeros((n_test, 1))
+exactdx0[np.linalg.norm(x0, axis=1)<r0] =  4/a1*np.linalg.norm(x0[np.linalg.norm(x0, axis=1)<r0], axis=1, keepdims=True)**3 # 不同的区域进行不同的解析解赋予
+exactdx0[np.linalg.norm(x0, axis=1)>=r0] =  4/a2*np.linalg.norm(x0[np.linalg.norm(x0, axis=1)>=r0], axis=1, keepdims=True)**3
+x0t = torch.tensor(x0, requires_grad=True) # 将numpy 变成 tensor
+predx0 = pred(x0t) # 预测一下
+dudxy = grad(predx0, x0t, torch.ones(x0t.size()[0], 1).cuda(), create_graph=True)[0]
+dudx = dudxy[:, 0].unsqueeze(1).data.cpu().numpy()
+dudy_rao = dudxy[:, 1].unsqueeze(1).data.cpu().numpy()
+# dudy_cenn[x0[:, 1]<0] = -dudy_cenn[x0[:, 1]<0] # y小于0的导数添加负号
+
+n_test = 100
+y0 = np.zeros((n_test, 2))
+y0[:, 0] = np.linspace(0, 1, 100)
+exactdy0 = np.zeros((n_test, 1))
+exactdy0[np.linalg.norm(y0, axis=1)<r0] =  4/a1*np.linalg.norm(y0[np.linalg.norm(y0, axis=1)<r0], axis=1, keepdims=True)**3 # 不同的区域进行不同的解析解赋予
+exactdy0[np.linalg.norm(y0, axis=1)>=r0] =  4/a2*np.linalg.norm(y0[np.linalg.norm(y0, axis=1)>=r0], axis=1, keepdims=True)**3
+y0t = torch.tensor(y0, requires_grad=True)
+predy0 = pred(y0t) # 预测x=0的原函数
+dudxy = grad(predy0, y0t, torch.ones(y0t.size()[0], 1).cuda(), create_graph=True)[0]
+dudx_rao = dudxy[:, 0].unsqueeze(1).data.cpu().numpy()
+dudy = dudxy[:, 1].unsqueeze(1).data.cpu().numpy()
+# dudx_cenn[y0[:, 0]<0] = -dudx_cenn[y0[:, 0]<0] # y小于0的导数添加负号
+
+# =============================================================================
 # 画图
 # =============================================================================
  
@@ -1474,9 +1738,10 @@ settick()
 plt.subplot(2, 2, 4)
 plt.yscale('log')
 plt.plot(error_array_cpinn)
+plt.plot(error_array_rao, ':')
 plt.plot(error_array_energy, '--')
 plt.plot(error_array_cenn, '-.')
-plt.legend(['CPINN', 'DEM', 'CENN'], loc = 'upper right')
+plt.legend(['CPINN', 'CPINN_RBF', 'DEM', 'CENN'], loc = 'upper right')
 plt.xlabel('Iteration')
 plt.ylabel('${\mathcal{L}_2}$ Error')
 plt.title('Error comparision', fontsize = 10) 
@@ -1488,12 +1753,12 @@ plt.show()
 
 
 
-
+#%%
 ######################################################################################################################################  
 # 再画不同线的比较
-#axs = plt.figure(dpi=1000, figsize=(12, 11), constrained_layout = True).subplots(2,2)
-#plt.subplot(2, 2, 1)
-plt.figure(dpi=1000, figsize=(6, 5.5))
+axs = plt.figure(dpi=1000, figsize=(14, 11)).subplots(2,2)
+plt.subplot(2, 2, 1)
+# plt.figure(dpi=1000, figsize=(6, 5.5))
 plt.plot(x0[:, 1], exactx0.flatten())
 plt.plot(x0[:, 1], predx0_cpinn.flatten(), linestyle=':')
 plt.plot(x0[:, 1], predx0_energy.flatten(), linestyle='--')
@@ -1501,12 +1766,13 @@ plt.plot(x0[:, 1], predx0_cenn.flatten(), linestyle='-.')
 plt.legend(['Exact', 'CPINN', 'DEM', 'CENN'], loc='upper left')
 plt.xlabel('Y')
 plt.ylabel('U')
+plt.title('X=0', size = 10)
 #axs[0, 0].set_title('X=0', size = 10)
-plt.savefig('./pic/x=0_u_%i.png' % dd)
-plt.show()
+# plt.savefig('./pic/x=0_u_%i.png' % dd)
+# plt.show()
 
-#axs[0, 1].subplot(2, 2, 2)
-plt.figure(dpi=1000, figsize=(6, 5.5))
+plt.subplot(2, 2, 2)
+# plt.figure(dpi=1000, figsize=(6, 5.5))
 plt.plot(y0[:, 0], exacty0.flatten())
 plt.plot(y0[:, 0], predy0_cpinn.flatten(), linestyle=':')
 plt.plot(y0[:, 0], predy0_energy.flatten(), linestyle='--')
@@ -1514,12 +1780,12 @@ plt.plot(y0[:, 0], predy0_cenn.flatten(), linestyle='-.')
 plt.legend(['Exact', 'CPINN', 'DEM', 'CENN'], loc='upper left')
 plt.xlabel('X')
 plt.ylabel('U')
-#axs[0, 1].set_title('Y=0', size = 10)
-plt.savefig('./pic/y=0_u_%i.png' % dd)
-plt.show()
+plt.title('Y=0', size = 10)
+# plt.savefig('./pic/y=0_u_%i.png' % dd)
+# plt.show()
 
-#axs[1, 0].subplot(2, 2, 3)
-plt.figure(dpi=1000, figsize=(6, 5.5))
+plt.subplot(2, 2, 3)
+# plt.figure(dpi=1000, figsize=(6, 5.5))
 plt.plot(x0[:-1, 1], exactdx0.flatten()[:-1]) # 删除最后一个边界点
 plt.plot(x0[:-1, 1], dudy_cpinn.flatten()[:-1], linestyle=':')
 plt.plot(x0[:-1, 1], dudy_energy.flatten()[:-1], linestyle='--')
@@ -1527,13 +1793,13 @@ plt.plot(x0[:-1, 1], dudy_cenn.flatten()[:-1], linestyle='-.')
 plt.legend(['Exact', 'CPINN', 'DEM', 'CENN'], loc='upper left')
 plt.xlabel('Y')
 plt.ylabel('$\partial u/\partial y$')
-plt.savefig('./pic/x=0_dudy_%i.png' % dd)
-#axs[1, 0].set_title('X=0', size = 10)
+# plt.savefig('./pic/x=0_dudy_%i.png' % dd)
+plt.title('X=0', size = 10)
 
-plt.show()
+# plt.show()
 
-#axs[1, 1].subplot(2, 2, 4)
-plt.figure(dpi=1000, figsize=(6, 5.5))
+plt.subplot(2, 2, 4)
+# plt.figure(dpi=1000, figsize=(6, 5.5))
 plt.plot(y0[:, 0], exactdy0.flatten())
 plt.plot(y0[:, 0], dudx_cpinn.flatten(), linestyle=':')
 plt.plot(y0[:, 0], dudx_energy.flatten(), linestyle='--')
@@ -1541,9 +1807,9 @@ plt.plot(y0[:, 0], dudx_cenn.flatten(), linestyle='-.')
 plt.legend(['Exact', 'CPINN', 'DEM', 'CENN'], loc='upper left')
 plt.xlabel('X')
 plt.ylabel('$\partial u/\partial x$')
-#axs[1, 1].set_title('Y=0', size = 10)
-plt.savefig('./pic/y=0_dudx_%i.png' % dd)
-#plt.savefig('../../picture/koch/审批/koch_compare_cross%i.pdf' % dd, bbox_inches = 'tight')
+plt.title('Y=0', size = 10)
+# plt.savefig('./pic/y=0_dudx_%i.png' % dd)
+plt.savefig('./pic/koch_compare_cross%i.pdf' % dd, bbox_inches = 'tight')
 plt.show()
 
 

@@ -39,8 +39,9 @@ penalty = 1000
 delta = 0.0
 train_p = 0
 nepoch_u0 = 2500 # Data-driven roughly 200 loop convergence
-nepoch_u1 = 2500 # Data-driven roughly 200 loop convergence
-nepoch_u2 = 2500 # Data-driven roughly 200 loop convergence
+nepoch_u1 = 2500 # CPINN roughly 200 loop convergence
+nepoch_u2 = 2500 # CENN roughly 200 loop convergence
+nepoch_u3 = 2500 # CPINN_with_RBF roughly 200 loop convergence
 a = 1
 error_total = {}
 setup_seed(55)
@@ -380,7 +381,9 @@ domxy_t= torch.tensor(domxy_t,  requires_grad=True, device = 'cuda')
 
 dis = RBF(domxy_t)
 
-
+# =============================================================================
+# Data_Driven
+# =============================================================================
 model_h = homo(2, 20, 1).cuda()
 criterion = torch.nn.MSELoss()
 optim_h = torch.optim.Adam(params=chain(model_h.parameters(), model_p1.parameters(), model_p2.parameters()), lr= 0.001)
@@ -526,8 +529,10 @@ error_array_data = np.array(error_array)
 
 
 
-
-
+#%%
+# =============================================================================
+# CPINN
+# =============================================================================
 nepoch_u0 = nepoch_u1 # 强形式大致1000循环收敛
 def NTK(predf1, predf2, predb1, predb2):
     # 输入强形式的内部1，内部2，和边界1，边界2
@@ -923,8 +928,10 @@ loss2_array_pinn = np.array(loss2_array)
  
 error_array_pinn = np.array(error_array)
 #error_array_pinn = error_array_pinn[error_array_pinn]
-
-
+#%%
+# =============================================================================
+# CENN
+# =============================================================================
 # %%
 nepoch_u0 = nepoch_u2 # PINN能量法大致200循环收敛
 
@@ -1450,7 +1457,118 @@ loss_array_energy  = np.array(loss_array)
 
 error_array_energy  = np.array(error_array)
 #error_array_energy  = error_array_energy[error_array_energy ]
+#%%
+# =============================================================================
+# CPINN_with_RBF
+# =============================================================================
 
+model_h = homo(2, 20, 1).cuda()
+criterion = torch.nn.MSELoss()
+optim_h = torch.optim.Adam(params=model_h.parameters(), lr= 0.001)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optim_h, milestones=[1000, 3000, 5000], gamma = 0.1)
+loss_array = []
+error_array = []
+loss1_array = []
+loss2_array = []  
+lossii1_array = []  
+lossii2_array = []   
+lossi_array = []
+eigvalues = []
+nepoch_u0 = int(nepoch_u3)
+start = time.time()
+for epoch in range(nepoch_u0):
+    if epoch ==1000:
+        end = time.time()
+        consume_time = end-start
+        print('time is %f' % consume_time)
+    if epoch%100 == 0:
+        Xb, Xf1, Xf2 = train_data(100, 4096)
+        Xi1 = interface1(5000)
+        Xi2 = interface2(5000)
+        Xi = interface(1000)
+    def closure():  
+        u_h1 = model_h(Xf1) 
+        u_h2 = model_h(Xf2)
+        
+        u_p1 = model_p1(Xf1)  
+        u_p2 = model_p2(Xf2) # 获得特解
+        # 构造可能位移场
+        u_pred1 = u_p1 + RBF(Xf1)*u_h1
+        u_pred2 = u_p2 + RBF(Xf2)*u_h2
+        
+        du1dxy = grad(u_pred1, Xf1, torch.ones(Xf1.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        du1dx = du1dxy[:, 0].unsqueeze(1)
+        du1dy = du1dxy[:, 1].unsqueeze(1)
+        du1dxxy = grad(du1dx, Xf1, torch.ones(Xf1.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        du1dyxy = grad(du1dy, Xf1, torch.ones(Xf1.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        du1dxx = du1dxxy[:, 0].unsqueeze(1)
+        du1dyy = du1dyxy[:, 1].unsqueeze(1)        
+        
+        du2dxy = grad(u_pred2, Xf2, torch.ones(Xf2.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        du2dx = du2dxy[:, 0].unsqueeze(1)
+        du2dy = du2dxy[:, 1].unsqueeze(1)
+        du2dxxy = grad(du2dx, Xf2, torch.ones(Xf2.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        du2dyxy = grad(du2dy, Xf2, torch.ones(Xf2.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+        du2dxx = du2dxxy[:, 0].unsqueeze(1)
+        du2dyy = du2dyxy[:, 1].unsqueeze(1) 
+        
+        J1 = torch.sum((du1dxx + du1dyy)**2)/len(du1dxx) 
+        J2 = torch.sum((du2dxx + du2dyy)**2)/len(du2dxx) 
+        
+        loss =  J1 +  J2  
+        error_t = evaluate()
+        optim_h.zero_grad()
+        loss.backward(retain_graph=True)
+        loss_array.append(loss.data.cpu())
+        error_array.append(error_t.data.cpu())
+
+        if epoch%10==0:
+            print(' epoch : %i, the loss : %f ,  J1 : %f , J2 : %f ' % (epoch, loss.data, J1.data, J2.data))
+        return loss
+    optim_h.step(closure)
+    scheduler.step()
+    
+    
+    
+N_test = 100
+x = np.linspace(-1, 1, N_test)
+y = np.linspace(-1, 1, N_test)
+x, y = np.meshgrid(x, y)
+xy_test = np.stack((x.flatten(), y.flatten()),1)
+xy_test = torch.from_numpy(xy_test).cuda() # to the model for the prediction
+
+u_pred = pred(xy_test)
+u_pred = u_pred.data
+u_pred_rao = u_pred.reshape(N_test, N_test).cpu()
+
+u_exact = np.zeros(x.shape)
+u_exact[y>0] = np.sqrt(np.sqrt(x[y>0]**2+y[y>0]**2))*np.sqrt((1-x[y>0]/np.sqrt(x[y>0]**2+y[y>0]**2))/2)
+u_exact[y<0] = -np.sqrt(np.sqrt(x[y<0]**2+y[y<0]**2))*np.sqrt((1-x[y<0]/np.sqrt(x[y<0]**2+y[y<0]**2))/2)
+u_exact = torch.from_numpy(u_exact)
+error_rao  = torch.abs(u_pred_rao  - u_exact) # get the error in every points
+error_rao_t = torch.norm(error_rao )/torch.norm(u_exact) # get the total relative L2 error
+
+
+# plot the prediction solution
+Xb, Xf1, Xf2 = train_data(256, 4096)
+Xi1 = interface1(1000)
+Xi2 = interface2(1000)
+
+
+plt.figure(dpi=1000, figsize=(7.3, 5.75))
+h2 = plt.contourf(x, y, u_pred_rao.detach().numpy(), levels=100 ,cmap = 'jet')
+plt.colorbar(h2)
+plt.show()
+
+plt.figure(dpi=1000, figsize=(7.3, 5.75))
+h4 = plt.contourf(x, y, error_rao.detach().numpy(), levels=100 ,cmap = 'jet')
+plt.colorbar(h4)
+plt.show()
+loss_array_rao  = np.array(loss_array)
+#loss_array_energy  = loss_array_energy [loss_array_energy <50]
+
+error_array_rao  = np.array(error_array)
+#error_array_energy  = error_array_energy[error_array_energy ]
 
 
 #plt.suptitle("energy")
@@ -1459,6 +1577,7 @@ error_array_energy  = np.array(error_array)
 print('the relative error of data is %f' % error_data_t.data)  
 print('the relative error of cpinn is %f' % error_pinn_t.data)   
 print('the relative error of cenn is %f' % error_energy_t.data)   
+print('the relative error of rao is %f' % error_rao_t.data)  
 #%%        
 fig = plt.figure(dpi=1000, figsize=(22, 6.5)) #接下来画损失函数的三种方法的比较以及相对误差的比较
 plt.subplot(1, 3, 1) # cpinn和data driven的损失函数对比
@@ -1469,7 +1588,7 @@ plt.plot(loss2_array_pinn, '-.')
 plt.legend(['Data-driven', 'SUB-CPINN-1', 'SUB-CPINN-2'], loc = 'upper right', fontsize = 15)
 plt.xlabel('Iteration', fontsize = 15)
 plt.ylabel('Loss', fontsize = 15)
-plt.title('CPINN and data-driven', fontsize = 20) 
+plt.title('CPINN and Data_driven', fontsize = 20) 
 settick()
 
 plt.subplot(1, 3, 2) # cenn损失函数，这里没有对比，但是有解析积分进行对比，画出精确积分的横线
@@ -1486,8 +1605,10 @@ plt.subplot(1, 3, 3) # 三种方法的整体误差比较
 plt.yscale('log')
 plt.plot(error_array_data)
 plt.plot(error_array_pinn, '--')
+plt.plot(error_array_rao, ':')
 plt.plot(error_array_energy, '-.')
-plt.legend(['Data-driven', 'CPINN', 'CENN'], loc = 'upper right', fontsize = 15)
+
+plt.legend(['Data-driven', 'CPINN', 'CPINN_RBF', 'CENN'], loc = 'upper right', fontsize = 15)
 plt.xlabel('Iteration', fontsize = 15)
 plt.ylabel('Error', fontsize = 15)
 plt.title('Error Comparision', fontsize = 20) 
