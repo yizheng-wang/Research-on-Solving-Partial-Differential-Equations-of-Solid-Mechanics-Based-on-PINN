@@ -17,7 +17,7 @@ def setup_domain(): # 四分之一2D方板圆孔
     rect = dmsh.Rectangle(0.0, +1.0, 0.0, 1.0)
     c = dmsh.Circle([0.5, 0.5], 0.25)
     geo = dmsh.Difference(rect, c)
-    X, cells = dmsh.generate(geo, lambda pts: np.abs(c.dist(pts))/18+0.020, tol=1.0e-15) # 划分693个点
+    X, cells = dmsh.generate(geo, lambda pts: np.abs(c.dist(pts))/20+0.020, tol=1.0e-15) # 划分693个点
     dom = cells_to_mid(cells, X) # 得到内部点与相应的面积
     
     x_dom = r, Length, Nx
@@ -48,3 +48,6 @@ def calc_area(P):
 
 if __name__ == '__main__':
     dom = setup_domain()
+plt.scatter(dom[:, 0], dom[:, 1])
+plt.show()
+np.save('1hole_dmsh', dom)
