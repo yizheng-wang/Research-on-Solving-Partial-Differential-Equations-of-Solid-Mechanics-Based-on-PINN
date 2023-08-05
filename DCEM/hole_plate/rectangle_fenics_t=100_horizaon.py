@@ -35,7 +35,7 @@ v = TestFunction(V)
 f = Constant((0, 0))  # Body force
 
 # Define the force on the right boundary (Neumann boundary condition)
-g = Expression(("100*sin(x[1]*pi)", "0."), degree = 3)
+g = Expression(("100", "0."), degree = 3)
 neumann_domain = MeshFunction("size_t", mesh, 1)
 neumann_domain.set_all(0)
 CompiledSubDomain("near(x[0], side) && on_boundary", side=1.0, tol=10e-15).mark(neumann_domain, 1)
