@@ -6,9 +6,9 @@ start = time.time()
 # Create mesh and define function space
 L = 1.0  # Length of the domain
 W = 1.0  # Width of the domain
-nx, ny = 200, 200  # Number of elements in x and y directions
+nx, ny = 50, 50  # Number of elements in x and y directions
 mesh = RectangleMesh(Point(0, 0), Point(L, W), nx, ny)
-V = VectorFunctionSpace(mesh, 'Lagrange', 2)
+V = VectorFunctionSpace(mesh, 'Lagrange', 3)
 
 # Define boundary conditions
 def left_boundary(x, on_boundary):
@@ -27,7 +27,7 @@ def epsilon(u):
     return 0.5 * (nabla_grad(u) + nabla_grad(u).T)
 
 def sigma(u):
-    return lmbda * div(u) * Identity(2) + 2 * mu * epsilon(u)
+    return 2 * mu * epsilon(u)  +  lmbda * Identity(2) * tr(epsilon(u))
 
 # Define variational problem
 u = TrialFunction(V)
@@ -35,8 +35,7 @@ v = TestFunction(V)
 f = Constant((0, 0))  # Body force
 
 # Define the force on the right boundary (Neumann boundary condition)
-g = Constant((0, -1))  # Applied force in the y-direction
-g = Expression(("100*sin(x[1]*pi)", "0."), degree = 2)
+g = Expression(("100*sin(x[1]*pi)", "0."), degree = 3)
 a = inner(sigma(u), epsilon(v)) * dx
 L = dot(f, v) * dx + dot(g, v) * ds  # Apply force on the right boundary
 
@@ -50,20 +49,19 @@ Sdev = stress - (1./3)*tr(stress)*I
 von_Mises = sqrt(3./2*inner(Sdev, Sdev))
 u_magnitude = sqrt(dot(u, u))
 
-V_f = FunctionSpace(mesh, "Lagrange", 2)
-W = TensorFunctionSpace(mesh, "Lagrange", 2)
+V_f = FunctionSpace(mesh, "Lagrange", 3)
+W = TensorFunctionSpace(mesh, "Lagrange", 3)
 u_magnitude = project(u_magnitude, V_f)
 von_Mises = project(von_Mises, V_f)
 stress = project(stress, W)
 end = time.time()
 # Save solution to file or plot the displacement
 # ...
-file = File("./output/fem/rectangle/rectangle2d_1x1_fem_v1.pvd");
-file << u;
-file << von_Mises;
-file << stress
-file << u_magnitude
-
+File("./output/fem/rectangle/rectangle2d_1x1_fem_u.pvd") << u;
+File("./output/fem/rectangle/rectangle2d_1x1_fem_mises.pvd") << von_Mises;
+File("./output/fem/rectangle/rectangle2d_1x1_fem_stress.pvd") << stress
+File("./output/fem/rectangle/rectangle2d_1x1_fem_u_mag.pvd") << u_magnitude
+print('The max u is ' +  str(u_magnitude.vector().get_local().max()))
 # Plot solution
 fig = plot(u, title='Displacement', mode='displacement')
 plt.colorbar(fig)
