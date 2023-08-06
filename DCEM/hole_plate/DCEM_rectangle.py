@@ -1,5 +1,3 @@
-# DCM by gaussian integration
-
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -11,6 +9,23 @@ from pyevtk.hl import pointsToVTK
 from pyevtk.hl import gridToVTK
 from torch.optim.lr_scheduler import MultiStepLR
 from matplotlib import cm
+
+FEM_node = np.load("node_coordinate_abaqus_rectangle.npy")
+node_stress_abaqus_rectangle = np.load("node_stress_abaqus_rectangle.npy")
+
+FEM_mise = node_stress_abaqus_rectangle[:,0]
+FEM_stress11 = node_stress_abaqus_rectangle[:,1]
+FEM_stress22 = node_stress_abaqus_rectangle[:,2]
+FEM_stress12 = node_stress_abaqus_rectangle[:,3]
+
+bound_len = 0.05
+index_without_boundary = np.where((FEM_node[:, 1] > bound_len)&(FEM_node[:, 0] > bound_len)&(FEM_node[:, 1] < 1-bound_len)&(FEM_node[:, 0] < 1-bound_len))
+FEM_node = FEM_node[index_without_boundary, :][0] # 找到左边界条件的坐标点
+FEM_mise = FEM_mise[index_without_boundary] # 找到左边界条件的坐标点
+FEM_stress11 = FEM_stress11[index_without_boundary] # 找到左边界条件的坐标点
+FEM_stress22 = FEM_stress22[index_without_boundary] # 找到左边界条件的坐标点
+FEM_stress12 = FEM_stress12[index_without_boundary] # 找到左边界条件的坐标点
+
 
 torch.set_default_tensor_type(torch.DoubleTensor) # 将tensor的类型变成默认的double
 torch.set_default_tensor_type(torch.cuda.DoubleTensor) # 将cuda的tensor的类型变成默认的double
@@ -26,7 +41,7 @@ setup_seed(0)
 a = 1.
 b = 1.
 P = 100
-nepoch = 200
+nepoch = 50000
 
 N_test = 101
 N_bound = 101
@@ -46,7 +61,7 @@ D22_mat = E/(1-nu**2)
 D12_mat = E*nu/(1-nu**2)
 D21_mat = E*nu/(1-nu**2)
 D33_mat = E/(2*(1+nu))
-training_part = 1
+training_part = 0
 order = 2
 factor = (4/a/b)**order
 def boundary_data_force(Nf):
@@ -412,8 +427,8 @@ def evaluate_sigma(N_test):# mesh spaced grid
     pred_sigma_x = sigma_x.data.cpu().numpy() # change the type of tensor to the array for the use of plotting
     pred_sigma_y = sigma_y.data.cpu().numpy()
     pred_sigma_xy = sigma_xy.data.cpu().numpy()
-
-    return dom, pred_sigma_x, pred_sigma_y, pred_sigma_xy
+    pred_mise = np.sqrt(0.5*((pred_sigma_x-pred_sigma_y)**2+pred_sigma_x**2+pred_sigma_y**2+6*pred_sigma_xy**2))
+    return dom, pred_sigma_x, pred_sigma_y, pred_sigma_xy, pred_mise
 
 def test_particular_with_pred(N_test):
     equal_line_x = np.linspace(0, a, N_part)
@@ -516,6 +531,7 @@ loss_ex_array = []
 error_sigma_x_array = []
 error_sigma_y_array = []
 error_sigma_xy_array = []
+error_sigma_mise_array = []
 nepoch = int(nepoch)
 start = time.time()
 xy_dom_t = dom_data_uniform(N_test)
@@ -559,9 +575,43 @@ for epoch in range(nepoch):
         loss.backward(retain_graph=True)
         loss_array.append(loss.data.cpu())
         loss_dom_array.append(J_dom.data.cpu())
-        if epoch%10==0:
+        if epoch%100==0:
             print(' epoch : %i, the loss : %f, loss dom : %f' % \
                   (epoch, loss.data, J_dom))
+        if epoch%10 ==0:
+                        # von_mise stress L2 error: test the error in the FEM coordinate
+            fem_dom_t = torch.tensor(FEM_node,  requires_grad=True, device='cuda')
+            fai = pred(fem_dom_t) # Input r and theta to the pred function to get the necessary predition stress function
+            
+            dfaidxy = grad(fai, fem_dom_t, torch.ones(fem_dom_t.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+            dfaidx = dfaidxy[:, 0].unsqueeze(1)
+            dfaidy = dfaidxy[:, 1].unsqueeze(1)
+            
+            dfaidxdxy = grad(dfaidx,  fem_dom_t, torch.ones( fem_dom_t.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+            dfaidxdx = dfaidxdxy[:, 0].unsqueeze(1)
+            dfaidxdy = dfaidxdxy[:, 1].unsqueeze(1)
+        
+            dfaidydxy = grad(dfaidy,  fem_dom_t, torch.ones( fem_dom_t.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+            dfaidydx = dfaidydxy[:, 0].unsqueeze(1)
+            dfaidydy = dfaidydxy[:, 1].unsqueeze(1)
+        
+            # 通过应力函数计算应力
+            sxx_pred = dfaidydy.data.cpu().numpy().flatten()
+            syy_pred = dfaidxdx.data.cpu().numpy().flatten()
+            sxy_pred = -dfaidxdy.data.cpu().numpy().flatten()
+            mise_pred = np.sqrt(0.5*((sxx_pred-syy_pred)**2+sxx_pred**2+syy_pred**2+6*sxy_pred**2)).flatten()
+            
+            L2_mise = np.linalg.norm(mise_pred - FEM_mise)/np.linalg.norm(FEM_mise)
+            L2_sigma11 = np.linalg.norm(sxx_pred - FEM_stress11)/np.linalg.norm(FEM_stress11)
+            L2_sigma22 = np.linalg.norm(syy_pred - FEM_stress22)/np.linalg.norm(FEM_stress22)
+            L2_sigma12 = np.linalg.norm(sxy_pred - FEM_stress12)/np.linalg.norm(FEM_stress12)
+            
+            error_sigma_mise_array.append(L2_mise)
+            error_sigma_x_array.append(L2_sigma11)
+            error_sigma_y_array.append(L2_sigma22)
+            error_sigma_xy_array.append(L2_sigma12)
+            print(' epoch : %i, the loss : %f, loss dom : %f, L2_mise: %f, L2_xx: %f, L2_yy: %f, L2_xy: %f' % \
+                  (epoch, loss.data, J_dom, L2_mise, L2_sigma11, L2_sigma22, L2_sigma12))        
         return loss
     optim.step(closure)
     scheduler.step()
@@ -577,16 +627,16 @@ def write_vtk_v2p(filename, dom, S11, S12, S22): #已经将输出的感兴趣场
     S22 = S22.flatten()
     pointsToVTK(filename, xx, yy, zz, data={"S11": S11, "S12": S12, "S22": S22})
         
-def write_vtk_v2(filename, dom, S11, S12, S22):
+def write_vtk_v2(filename, dom, S11, S12, S22, von_mises):
     xx = np.ascontiguousarray(dom[:, 0]).reshape(N_test, N_test, 1)
     yy = np.ascontiguousarray(dom[:, 1]).reshape(N_test, N_test, 1)
     zz = 0*np.ascontiguousarray(dom[:, 1]).reshape(N_test, N_test, 1)
-    gridToVTK(filename, xx, yy, zz, pointData={"S11": S11.reshape(N_test, N_test, 1), "S12": S12.reshape(N_test, N_test, 1), "S22": S22.reshape(N_test, N_test, 1)})
+    gridToVTK(filename, xx, yy, zz, pointData={"S11": S11.reshape(N_test, N_test, 1), "S12": S12.reshape(N_test, N_test, 1), "S22": S22.reshape(N_test, N_test, 1), "Von_mise": von_mises.reshape(N_test, N_test, 1)})
     # gridToVTK(filename, xx, yy, zz, pointData={"displacement": U})  
     
-dom, pred_sigma_x, pred_sigma_y, pred_sigma_xy = evaluate_sigma(N_test)
+dom, pred_sigma_x, pred_sigma_y, pred_sigma_xy, pred_von = evaluate_sigma(N_test)
 
-write_vtk_v2("./output/DCEM_rectangle",  dom, pred_sigma_x, pred_sigma_xy, pred_sigma_y)
+write_vtk_v2("./output/DCEM_rectangle",  dom, pred_sigma_x, pred_sigma_xy, pred_sigma_y, pred_von)
 
 
 # =============================================================================
@@ -697,3 +747,104 @@ plt.ylabel('sigma_down')
 plt.legend(['exact_tx_down', 'exact_ty_down', 'pred_xy_down',  'pred_yy_down'])
 plt.title('down')
 plt.show()
+
+# =============================================================================
+# # x = 0.5, x = 1.0, y = 0.5
+# =============================================================================
+FEM_node = np.load("node_coordinate_abaqus_rectangle.npy")
+node_stress_abaqus_rectangle = np.load("node_stress_abaqus_rectangle.npy")
+
+FEM_mise = node_stress_abaqus_rectangle[:,0]
+FEM_stress11 = node_stress_abaqus_rectangle[:,1]
+FEM_stress22 = node_stress_abaqus_rectangle[:,2]
+FEM_stress12 = node_stress_abaqus_rectangle[:,3]
+    
+# # x = 0.5
+x05 = np.where((FEM_node[:, 0] == 0.5 ))
+FEM_node_x05 = FEM_node[x05, :][0] # 
+FEM_mise_x05 = FEM_mise[x05] 
+FEM_stress11_x05 = FEM_stress11[x05] 
+FEM_stress22_x05 = FEM_stress22[x05] 
+FEM_stress12_x05 = FEM_stress12[x05] 
+
+
+xy_dom_t_x05 = torch.tensor(FEM_node_x05,  requires_grad=True, device='cuda')
+fai_x05 = pred(xy_dom_t_x05) # Input r and theta to the pred function to get the necessary predition stress function
+
+dfaidxy_x05 = grad(fai_x05, xy_dom_t_x05, torch.ones(xy_dom_t_x05.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+dfaidx_x05 = dfaidxy_x05[:, 0].unsqueeze(1)
+dfaidy_x05 = dfaidxy_x05[:, 1].unsqueeze(1)
+
+dfaidxdxy_x05 = grad(dfaidx_x05,  xy_dom_t_x05, torch.ones( xy_dom_t_x05.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+dfaidxdx_x05 = dfaidxdxy_x05[:, 0].unsqueeze(1)
+dfaidxdy_x05 = dfaidxdxy_x05[:, 1].unsqueeze(1)
+
+dfaidydxy_x05 = grad(dfaidy_x05,  xy_dom_t_x05, torch.ones( xy_dom_t_x05.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+dfaidydx_x05 = dfaidydxy_x05[:, 0].unsqueeze(1)
+dfaidydy_x05 = dfaidydxy_x05[:, 1].unsqueeze(1)
+
+# 通过应力函数计算应力
+sxx_pred_x05 = dfaidydy_x05.data.cpu().numpy().flatten()
+syy_pred_x05 = dfaidxdx_x05.data.cpu().numpy().flatten()
+sxy_pred_x05 = -dfaidxdy_x05.data.cpu().numpy().flatten()
+mise_pred_x05 = np.sqrt(0.5*((sxx_pred_x05-syy_pred_x05)**2+sxx_pred_x05**2+syy_pred_x05**2+6*sxy_pred_x05**2)).flatten()
+
+# # x = 1.0
+x10 = np.where((FEM_node[:, 0] == 1.0 ))
+FEM_node_x10 = FEM_node[x10, :][0] # 
+FEM_mise_x10 = FEM_mise[x10] 
+FEM_stress11_x10 = FEM_stress11[x10] 
+FEM_stress22_x10 = FEM_stress22[x10] 
+FEM_stress12_x10 = FEM_stress12[x10] 
+
+
+xy_dom_t_x10 = torch.tensor(FEM_node_x10,  requires_grad=True, device='cuda')
+fai_x10 = pred(xy_dom_t_x10) # Input r and theta to the pred function to get the necessary predition stress function
+
+dfaidxy_x10 = grad(fai_x10, xy_dom_t_x10, torch.ones(xy_dom_t_x10.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+dfaidx_x10 = dfaidxy_x10[:, 0].unsqueeze(1)
+dfaidy_x10 = dfaidxy_x10[:, 1].unsqueeze(1)
+
+dfaidxdxy_x10 = grad(dfaidx_x10,  xy_dom_t_x10, torch.ones( xy_dom_t_x10.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+dfaidxdx_x10 = dfaidxdxy_x10[:, 0].unsqueeze(1)
+dfaidxdy_x10 = dfaidxdxy_x10[:, 1].unsqueeze(1)
+
+dfaidydxy_x10 = grad(dfaidy_x10,  xy_dom_t_x10, torch.ones( xy_dom_t_x10.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+dfaidydx_x10 = dfaidydxy_x10[:, 0].unsqueeze(1)
+dfaidydy_x10 = dfaidydxy_x10[:, 1].unsqueeze(1)
+
+# 通过应力函数计算应力
+sxx_pred_x10 = dfaidydy_x10.data.cpu().numpy().flatten()
+syy_pred_x10 = dfaidxdx_x10.data.cpu().numpy().flatten()
+sxy_pred_x10 = -dfaidxdy_x10.data.cpu().numpy().flatten()
+mise_pred_x10 = np.sqrt(1.0*((sxx_pred_x10-syy_pred_x10)**2+sxx_pred_x10**2+syy_pred_x10**2+6*sxy_pred_x10**2)).flatten()
+
+# # y = 0.5
+y05 = np.where((FEM_node[:, 1] == 0.5 ))
+FEM_node_y05 = FEM_node[y05, :][0] # 
+FEM_mise_y05 = FEM_mise[y05] 
+FEM_stress11_y05 = FEM_stress11[y05] 
+FEM_stress22_y05 = FEM_stress22[y05] 
+FEM_stress12_y05 = FEM_stress12[y05] 
+
+
+xy_dom_t_y05 = torch.tensor(FEM_node_y05,  requires_grad=True, device='cuda')
+fai_y05 = pred(xy_dom_t_y05) # Input r and theta to the pred function to get the necessary predition stress function
+
+dfaidxy_y05 = grad(fai_y05, xy_dom_t_y05, torch.ones(xy_dom_t_y05.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+dfaidx_y05 = dfaidxy_y05[:, 0].unsqueeze(1)
+dfaidy_y05 = dfaidxy_y05[:, 1].unsqueeze(1)
+
+dfaidxdxy_y05 = grad(dfaidx_y05,  xy_dom_t_y05, torch.ones( xy_dom_t_y05.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+dfaidxdx_y05 = dfaidxdxy_y05[:, 0].unsqueeze(1)
+dfaidxdy_y05 = dfaidxdxy_y05[:, 1].unsqueeze(1)
+
+dfaidydxy_y05 = grad(dfaidy_y05,  xy_dom_t_y05, torch.ones( xy_dom_t_y05.size()[0], 1).cuda(), retain_graph=True, create_graph=True)[0]
+dfaidydx_y05 = dfaidydxy_y05[:, 0].unsqueeze(1)
+dfaidydy_y05 = dfaidydxy_y05[:, 1].unsqueeze(1)
+
+# 通过应力函数计算应力
+sxx_pred_y05 = dfaidydy_y05.data.cpu().numpy().flatten()
+syy_pred_y05 = dfaidxdx_y05.data.cpu().numpy().flatten()
+sxy_pred_y05 = -dfaidxdy_y05.data.cpu().numpy().flatten()
+mise_pred_y05 = np.sqrt(1.0*((sxx_pred_y05-syy_pred_y05)**2+sxx_pred_y05**2+syy_pred_y05**2+6*sxy_pred_y05**2)).flatten()

@@ -12,6 +12,23 @@ from pyevtk.hl import gridToVTK
 from torch.optim.lr_scheduler import MultiStepLR
 from matplotlib import cm
 
+FEM_node = np.load("node_coordinate_abaqus_rectangle.npy")
+node_stress_abaqus_rectangle = np.load("node_stress_abaqus_rectangle.npy")
+
+FEM_mise = node_stress_abaqus_rectangle[:,0]
+FEM_stress11 = node_stress_abaqus_rectangle[:,1]
+FEM_stress22 = node_stress_abaqus_rectangle[:,2]
+FEM_stress12 = node_stress_abaqus_rectangle[:,3]
+
+bound_len = 0.05
+index_without_boundary = np.where((FEM_node[:, 1] > bound_len)&(FEM_node[:, 0] > bound_len)&(FEM_node[:, 1] < 1-bound_len)&(FEM_node[:, 0] < 1-bound_len))
+FEM_node = FEM_node[index_without_boundary, :][0] # 找到左边界条件的坐标点
+FEM_mise = FEM_mise[index_without_boundary] # 找到左边界条件的坐标点
+FEM_stress11 = FEM_stress11[index_without_boundary] # 找到左边界条件的坐标点
+FEM_stress22 = FEM_stress22[index_without_boundary] # 找到左边界条件的坐标点
+FEM_stress12 = FEM_stress12[index_without_boundary] # 找到左边界条件的坐标点
+
+
 torch.set_default_tensor_type(torch.DoubleTensor) # 将tensor的类型变成默认的double
 torch.set_default_tensor_type(torch.cuda.DoubleTensor) # 将cuda的tensor的类型变成默认的double
 def setup_seed(seed):
@@ -26,7 +43,7 @@ setup_seed(0)
 a = 1.
 b = 1.
 P = 100
-nepoch = 20000
+nepoch = 50000
 
 N_test = 101
 N_bound = 101
@@ -241,6 +258,7 @@ loss_ex_array = []
 error_sigma_x_array = []
 error_sigma_y_array = []
 error_sigma_xy_array = []
+error_sigma_mise_array = []
 nepoch = int(nepoch)
 start = time.time()
 xy_dom_t = dom_data_uniform(N_test)
@@ -285,9 +303,43 @@ for epoch in range(nepoch):
         loss_array.append(loss.data.cpu())
         loss_dom_array.append(J_dom.data.cpu())
         loss_ex_array.append(J_ex.data.cpu())
-        if epoch%10==0:
+        
+
+        if epoch%100==0:
             print(' epoch : %i, the loss : %f, loss dom : %f, loss ex : %f' % \
                   (epoch, loss.data, J_dom, J_ex))
+        if epoch%10 ==0:
+                        # von_mise stress L2 error: test the error in the FEM coordinate
+            fem_dom_t = torch.tensor(FEM_node,  requires_grad=True, device='cuda')
+            u_pred = pred(fem_dom_t) # Input r and theta to the pred function to get the necessary predition stress function
+            duxdxy = grad(u_pred[:, 0].unsqueeze(1), fem_dom_t, torch.ones(fem_dom_t.size()[0], 1, device="cuda"), create_graph=True, retain_graph=True)[0]
+            duydxy = grad(u_pred[:, 1].unsqueeze(1), fem_dom_t, torch.ones(fem_dom_t.size()[0], 1, device="cuda"), create_graph=True, retain_graph=True)[0]
+            duxdx = duxdxy[:, 0].unsqueeze(1)
+            duxdy = duxdxy[:, 1].unsqueeze(1)
+            
+            duydx = duydxy[:, 0].unsqueeze(1)
+            duydy = duydxy[:, 1].unsqueeze(1)
+            
+            exx_pred = duxdx.data.cpu().numpy()
+            eyy_pred = duydy.data.cpu().numpy()
+            e2xy_pred = (duxdy + duydx).data.cpu().numpy()
+    
+            sxx_pred = (D11_mat * exx_pred + D12_mat * eyy_pred).flatten()
+            syy_pred = (D12_mat * exx_pred + D22_mat * eyy_pred).flatten()
+            sxy_pred = (D33_mat * e2xy_pred).flatten()
+            mise_pred = np.sqrt(0.5*((sxx_pred-syy_pred)**2+sxx_pred**2+syy_pred**2+6*sxy_pred**2))
+            
+            L2_mise = np.linalg.norm(mise_pred - FEM_mise)/np.linalg.norm(FEM_mise)
+            L2_sigma11 = np.linalg.norm(sxx_pred - FEM_stress11)/np.linalg.norm(FEM_stress11)
+            L2_sigma22 = np.linalg.norm(syy_pred - FEM_stress22)/np.linalg.norm(FEM_stress22)
+            L2_sigma12 = np.linalg.norm(sxy_pred - FEM_stress12)/np.linalg.norm(FEM_stress12)
+            
+            error_sigma_mise_array.append(L2_mise)
+            error_sigma_x_array.append(L2_sigma11)
+            error_sigma_y_array.append(L2_sigma22)
+            error_sigma_xy_array.append(L2_sigma12)
+            print(' epoch : %i, the loss : %f, loss dom : %f, loss ex : %f, L2_mise: %f, L2_xx: %f, L2_yy: %f, L2_xy: %f' % \
+                  (epoch, loss.data, J_dom, J_ex, L2_mise, L2_sigma11, L2_sigma22, L2_sigma12))
         return loss
     optim.step(closure)
     scheduler.step()
@@ -444,5 +496,94 @@ for tick in ax.get_yticklabels():
 #plt.savefig('Flat-U-Energy-10-10.png', dpi=600, transparent=True)
 plt.show()    
     
+# =============================================================================
+# # x = 0.5, x = 1.0, y = 0.5
+# =============================================================================
+FEM_node = np.load("node_coordinate_abaqus_rectangle.npy")
+node_stress_abaqus_rectangle = np.load("node_stress_abaqus_rectangle.npy")
+
+FEM_mise = node_stress_abaqus_rectangle[:,0]
+FEM_stress11 = node_stress_abaqus_rectangle[:,1]
+FEM_stress22 = node_stress_abaqus_rectangle[:,2]
+FEM_stress12 = node_stress_abaqus_rectangle[:,3]
     
-    
+# # x = 0.5
+x05 = np.where((FEM_node[:, 0] == 0.5 )) # 里面的数据有两组，需要排序
+FEM_node_x05 = FEM_node[x05, :][0] # 
+FEM_mise_x05 = FEM_mise[x05] 
+FEM_stress11_x05 = FEM_stress11[x05] 
+FEM_stress22_x05 = FEM_stress22[x05] 
+FEM_stress12_x05 = FEM_stress12[x05] 
+
+xy_dom_t_x05 = torch.tensor(FEM_node_x05,  requires_grad=True, device='cuda')
+u_pred_x05 = pred(xy_dom_t_x05) # Input r and theta to the pred function to get the necessary predition stress function
+duxdxy_x05 = grad(u_pred_x05[:, 0].unsqueeze(1), xy_dom_t_x05, torch.ones(xy_dom_t_x05.size()[0], 1, device="cuda"), create_graph=True, retain_graph=True)[0]
+duydxy_x05 = grad(u_pred_x05[:, 1].unsqueeze(1), xy_dom_t_x05, torch.ones(xy_dom_t_x05.size()[0], 1, device="cuda"), create_graph=True, retain_graph=True)[0]
+duxdx_x05 = duxdxy_x05[:, 0].unsqueeze(1)
+duxdy_x05 = duxdxy_x05[:, 1].unsqueeze(1)
+
+duydx_x05 = duydxy_x05[:, 0].unsqueeze(1)
+duydy_x05 = duydxy_x05[:, 1].unsqueeze(1)
+
+exx_pred_x05 = duxdx_x05
+eyy_pred_x05 = duydy_x05
+e2xy_pred_x05 = duxdy_x05 + duydx_x05 
+
+sxx_pred_x05 = (D11_mat * exx_pred_x05 + D12_mat * eyy_pred_x05).data.cpu().numpy()
+syy_pred_x05 = (D12_mat * exx_pred_x05 + D22_mat * eyy_pred_x05).data.cpu().numpy()
+sxy_pred_x05 = (D33_mat * e2xy_pred_x05).data.cpu().numpy()
+mise_pred_x05 = np.sqrt(0.5*((sxx_pred_x05-syy_pred_x05)**2+sxx_pred_x05**2+syy_pred_x05**2+6*sxy_pred_x05**2))
+
+# # x = 1.0
+x10 = np.where((FEM_node[:, 0] == 1.0 ))
+FEM_node_x10 = FEM_node[x10, :][0] # 
+FEM_mise_x10 = FEM_mise[x10] 
+FEM_stress11_x10 = FEM_stress11[x10] 
+FEM_stress22_x10 = FEM_stress22[x10] 
+FEM_stress12_x10 = FEM_stress12[x10] 
+
+xy_dom_t_x10 = torch.tensor(FEM_node_x10,  requires_grad=True, device='cuda')
+u_pred_x10 = pred(xy_dom_t_x10) # Input r and theta to the pred function to get the necessary predition stress function
+duxdxy_x10 = grad(u_pred_x10[:, 0].unsqueeze(1), xy_dom_t_x10, torch.ones(xy_dom_t_x10.size()[0], 1, device="cuda"), create_graph=True, retain_graph=True)[0]
+duydxy_x10 = grad(u_pred_x10[:, 1].unsqueeze(1), xy_dom_t_x10, torch.ones(xy_dom_t_x10.size()[0], 1, device="cuda"), create_graph=True, retain_graph=True)[0]
+duxdx_x10 = duxdxy_x10[:, 0].unsqueeze(1)
+duxdy_x10 = duxdxy_x10[:, 1].unsqueeze(1)
+
+duydx_x10 = duydxy_x10[:, 0].unsqueeze(1)
+duydy_x10 = duydxy_x10[:, 1].unsqueeze(1)
+
+exx_pred_x10 = duxdx_x10
+eyy_pred_x10 = duydy_x10
+e2xy_pred_x10 = duxdy_x10 + duydx_x10 
+
+sxx_pred_x10 = (D11_mat * exx_pred_x10 + D12_mat * eyy_pred_x10).data.cpu().numpy()
+syy_pred_x10 = (D12_mat * exx_pred_x10 + D22_mat * eyy_pred_x10).data.cpu().numpy()
+sxy_pred_x10 = (D33_mat * e2xy_pred_x10).data.cpu().numpy()
+mise_pred_x10 = np.sqrt(0.5*((sxx_pred_x10-syy_pred_x10)**2+sxx_pred_x10**2+syy_pred_x10**2+6*sxy_pred_x10**2))
+
+# # y = 0.5
+y05 = np.where((FEM_node[:, 1] == 0.5 ))
+FEM_node_y05 = FEM_node[y05, :][0] # 
+FEM_mise_y05 = FEM_mise[y05] 
+FEM_stress11_y05 = FEM_stress11[y05] 
+FEM_stress22_y05 = FEM_stress22[y05] 
+FEM_stress12_y05 = FEM_stress12[y05] 
+
+xy_dom_t_y05 = torch.tensor(FEM_node_y05,  requires_grad=True, device='cuda')
+u_pred_y05 = pred(xy_dom_t_y05) # Input r and theta to the pred function to get the necessary predition stress function
+duxdxy_y05 = grad(u_pred_y05[:, 0].unsqueeze(1), xy_dom_t_y05, torch.ones(xy_dom_t_y05.size()[0], 1, device="cuda"), create_graph=True, retain_graph=True)[0]
+duydxy_y05 = grad(u_pred_y05[:, 1].unsqueeze(1), xy_dom_t_y05, torch.ones(xy_dom_t_y05.size()[0], 1, device="cuda"), create_graph=True, retain_graph=True)[0]
+duxdx_y05 = duxdxy_y05[:, 0].unsqueeze(1)
+duxdy_y05 = duxdxy_y05[:, 1].unsqueeze(1)
+
+duydx_y05 = duydxy_y05[:, 0].unsqueeze(1)
+duydy_y05 = duydxy_y05[:, 1].unsqueeze(1)
+
+exx_pred_y05 = duxdx_y05
+eyy_pred_y05 = duydy_y05
+e2xy_pred_y05 = duxdy_y05 + duydx_y05 
+
+sxx_pred_y05 = (D11_mat * exx_pred_y05 + D12_mat * eyy_pred_y05).data.cpu().numpy()
+syy_pred_y05 = (D12_mat * exx_pred_y05 + D22_mat * eyy_pred_y05).data.cpu().numpy()
+sxy_pred_y05 = (D33_mat * e2xy_pred_y05).data.cpu().numpy()
+mise_pred_y05 = np.sqrt(0.5*((sxx_pred_y05-syy_pred_y05)**2+sxx_pred_y05**2+syy_pred_y05**2+6*sxy_pred_y05**2))
