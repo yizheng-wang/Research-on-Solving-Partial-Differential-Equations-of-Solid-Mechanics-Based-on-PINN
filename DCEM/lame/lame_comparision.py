@@ -418,7 +418,7 @@ def evaluate_dis_line(N_test):# output the prediction of the displacement along 
 model = FNN(1, 20, 1).cuda() # input: r; output: Airy stress function
 optim = torch.optim.Adam(model.parameters(), lr= 0.001)
 loss_array = []
-loss_dom_array = []
+loss_dom_array_potential = []
 loss_ex_array = []
 error_sigma_rr_array_potential = []
 error_sigma_theta_array_potential = []
@@ -447,7 +447,7 @@ for epoch in range(nepoch):
         optim.zero_grad()
         loss.backward(retain_graph=True)
         loss_array.append(loss.data.cpu())
-        loss_dom_array.append(J_dom.data.cpu())
+        loss_dom_array_potential.append(J_dom.data.cpu())
         if epoch == nepoch-1:
             print()
         r_numpy, pred_sigma_rr, pred_sigma_theta, pred_dis_r = evaluate_sigma_line(N_test)  
@@ -609,7 +609,7 @@ model = FNN(1, 20, 1).cuda() # input: r; output: Airy stress function
 optim = torch.optim.Adam(model.parameters(), lr= 0.001)
 step_scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=2000, gamma=0.1)
 loss_array = []
-loss_dom_array = []
+loss_dom_array_complementary = []
 loss_ex_array = []
 error_sigma_rr_array_complementary = []
 error_sigma_theta_array_complementary = []
@@ -647,7 +647,7 @@ for epoch in range(nepoch):
         optim.zero_grad()
         loss.backward(retain_graph=True)
         loss_array.append(loss.data.cpu())
-        loss_dom_array.append(J_dom.data.cpu())
+        loss_dom_array_complementary.append(J_dom.data.cpu())
         loss_ex_array.append(J_ex.data.cpu())
         if epoch == nepoch-1:
             print()
