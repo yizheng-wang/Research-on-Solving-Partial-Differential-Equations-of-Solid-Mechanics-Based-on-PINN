@@ -1,3 +1,5 @@
+data should be downloaded from https://1drv.ms/f/s!AksHfblNspn5kopiSGwZrDnan-C_lA?e=dPkLbq (326G)
+
 Our data, computed with a supercomputer (900 CPU nodes each with 192G of memory and 80 V100 GPUs), includes 1800 sets of TPMS geometries each with 2,097,152 elements (resolution 128*128*128) and 3600 sets each with 262,144 elements (resolution 64*64*64), covering various geometries and Poisson's ratios, totaling approximately 325G of data. 
 Computing data at a resolution of 128 on a system with 192 GB of memory and 56 CPU cores requires an average of 2500 seconds. Due to the iterative method of our custom-written traditional finite element homogenization code, the time for traditional numerical homogenization is not fixed, so we can only provide an average time. For data at a resolution of 64, under the same hardware conditions, the average computation time is 150 seconds. 
 
