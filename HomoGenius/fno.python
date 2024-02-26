@@ -1,0 +1,12 @@
+#!/bin/bash
+#SBATCH -J diff_res
+#SBATCH -p gnall
+#SBATCH -N 1
+#SBATCH -o test_diff_res_train_32_test_128.out
+#SBATCH -e test_diff_res_train_32_test_128.error
+#SBATCH --no-requeue
+#SBATCH --ntasks-per-node=14 #根据实际情况设置
+#SBATCH --gres=gpu:1 #根据需要设置，只使用CPU此行省略
+ 
+
+python FNO_homo_nu_res128_type3_diff_res.py #具体的python命令

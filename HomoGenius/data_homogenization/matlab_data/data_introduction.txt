@@ -1,0 +1,17 @@
+Our data, computed with a supercomputer (900 CPU nodes each with 192G of memory and 80 V100 GPUs), includes 1800 sets of TPMS geometries each with 2,097,152 elements (resolution 128*128*128) and 3600 sets each with 262,144 elements (resolution 64*64*64), covering various geometries and Poisson's ratios, totaling approximately 325G of data. 
+Computing data at a resolution of 128 on a system with 192 GB of memory and 56 CPU cores requires an average of 2500 seconds. Due to the iterative method of our custom-written traditional finite element homogenization code, the time for traditional numerical homogenization is not fixed, so we can only provide an average time. For data at a resolution of 64, under the same hardware conditions, the average computation time is 150 seconds. 
+
+We calculate the homogenization results of 6 types of TPMS by FEM. 
+
+The 6 types of TPMS are 
+1-600: Schoen Gyroid: "Solid-networks", 
+601-1200: Schoen Gyroid: "Sheet-networks", 
+1201-1800: Schwarz Diamond: "Solid-networks", 
+1801-2400: Schwarz Diamond: "Sheet-networks", 
+2401-3000: Fischer Kosh S: "Solid-networks", 
+3001-3600: Fischer Kosh S: "Sheet-networks".
+
+The details of the folder "res64" and "res128" is:
+res64： The dataset with resolution 64*64*64 is for different material (different Poisson's rate from 0.1-0.4 following Gaussian distribution).
+res128： The dataset with resolution 128*128*128 is for different geometry ("Sheet-networks": Schoen Gyroid, Schwarz Diamond, and Fischer Kosh S).
+
