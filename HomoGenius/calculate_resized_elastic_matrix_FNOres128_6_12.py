@@ -114,8 +114,8 @@ class FNO3d(nn.Module):
         self.bn2 = torch.nn.BatchNorm3d(self.width)
         self.bn3 = torch.nn.BatchNorm3d(self.width)
 
-        self.fc1 = nn.Linear(self.width, 64)
-        self.fc2 = nn.Linear(64, 18)
+        self.fc1 = nn.Linear(self.width, 128)
+        self.fc2 = nn.Linear(128, 18)
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)
@@ -350,7 +350,7 @@ def homo3D_revised(lx,ly,lz,lamda,mu,voxel):
     X_FNO_invreshape_active = np.zeros(X_FNO_invreshape.shape)
     X_FNO_invreshape_active[activedofs[3:]-1] = X_FNO_invreshape[activedofs[3:]-1]
     
-    X_FNO_active = X_FNO_invreshape_active.reshape(64, 64, 64, 18)
+    X_FNO_active = X_FNO_invreshape_active.reshape(128,128,128,18)
     
 
     
@@ -393,7 +393,9 @@ if __name__ == "__main__":
     ly = 1;
     lz = 1;
     E = 1.0
-
+    v = 0.3
+    mu = E/2.0/(1.0+v)
+    lamda = E*v/(1.0+v)/(1.0-2.0*v)
     # lamda = 12115.38;
     # mu = 8076.92;
     
@@ -401,8 +403,8 @@ if __name__ == "__main__":
     # output_PATH = []
     # data_number = 360
     # for i in range(data_number):
-    #     input_PATH.append(f'../homogenization/data/npy folder_res32_data600/{i+1}.npy')   # input is 64*64*64 resolution
-    #     output_PATH.append(f'../homogenization/calculation results/res32_data600/reshaped_displacement_{i+1}.npy')   # input is 64*64*64 resolution
+    #     input_PATH.append(f'../homogenization/data/npy folder_res32_data600/{i+1}.npy')   # input is 128*128*128 resolution
+    #     output_PATH.append(f'../homogenization/calculation results/res32_data600/reshaped_displacement_{i+1}.npy')   # input is 128*128*128 resolution
         
     # input_data_list = [np.load(input_PATH[i]).astype(np.float32) for i in range(data_number)]
     # output_data_list = [np.load(output_PATH[i]).astype(np.float32) for i in range(data_number)]
@@ -430,37 +432,31 @@ if __name__ == "__main__":
     start_train = 601
     end_train = 601 # 在训练集中用来算修正矩阵的
     
+    start = 751
+    end = 800
     root_file_path = r'./'  # windows path dir
     # root_file_path = r'/mnt/i/Spindoid/random samples dir'  # linux path dir
     beta = 1 #  历史的比重，这个越大，表示历史的比重就越大
 
-    shuffled_num = np.load('./outdata/res64_data_type3_material/shuffled_indices.npy')+1# 获得shuffle之后的顺序，前面3000是训练集，后面600是测试集
-    test_num = shuffled_num[-600:]
-    test_data = [num for num in test_num if 601 <= num <= 1200]
-
-    x_normalizer = torch.load('./x_normalizer_nu_res64_data_type3_material')
-    y_normalizer = torch.load('./y_normalizer_nu_res64_data_type3_material')
+    
+    x_normalizer = torch.load('./x_normalizer_nu_res128_data601_1200')
+    y_normalizer = torch.load('./y_normalizer_nu_res128_data601_1200')
     y_normalizer.cuda()
-    model = torch.load('./model/TrainRes_64/data_type3_material/1/FNO_homo_nu')
+    model = torch.load('./model/TrainRes_128/data_type3/1/FNO_homo_nu')
     # 先通过训练数据的来获得一个修正系数，这个类型是150个训练数据
     P = np.zeros([6, 6])
     for i in range(start_train,end_train+1):
         start_time = time.perf_counter()
-        mat_filename = r'data_homogenization/matlab_data/FEM results/res64/601-1200_material/nu_%i.mat' % i
-        
-
+        mat_filename = r'data_homogenization/matlab_data/FEM results/res128/601-1200/nu_%i.mat' % i
         elastic_matrix_path = os.path.join(root_file_path,mat_filename)
         matdata = np.float64(scipy.io.loadmat(elastic_matrix_path)['data_nu'])
-        v = matdata.max()
-        mu = E/2.0/(1.0+v)
-        lamda = E*v/(1.0+v)/(1.0-2.0*v)
         # scipy.io.savemat('test_matdata.mat',{'test_matdata':matdata}) 
         FNO_C,displacement, dis_FNO = homo3D_revised(lx,ly,lz,lamda,mu,matdata) # dis_FNO是和输入对应的
         
         end_time = time.perf_counter()
         print('Running time: %s Seconds'%(end_time-start_time))
         print('model %s has been completed !!!'%(i))
-        GT_C_path = r'data_homogenization/matlab_data/FEM results/res64/601-1200_material/CH_'+str(i)+'.mat'
+        GT_C_path = r'data_homogenization/matlab_data/FEM results/res128/601-1200/CH_'+str(i)+'.mat'
 
         GT_C = np.float64(scipy.io.loadmat(GT_C_path)['Homoed_C'])
         
@@ -474,28 +470,24 @@ if __name__ == "__main__":
     # 得到一个总体的P，然后算平均值
     P = P/(end_train+1-start_train) # 训练数据结果用来计算修正矩阵    
     # P_c = P # 做一个expotential average   
-    for i in test_data:
+    for i in range(start,end+1):
         # P_c = beta*P_c + (1-beta)*P
         
         start_time = time.perf_counter()
-        mat_filename = r'data_homogenization/matlab_data/FEM results/res64/601-1200_material/nu_%i.mat' % i
+        mat_filename = r'data_homogenization/matlab_data/FEM results/res128/601-1200/nu_%i.mat' % i
         elastic_matrix_path = os.path.join(root_file_path,mat_filename)
         matdata = np.float64(scipy.io.loadmat(elastic_matrix_path)['data_nu'])
-        
-        v = matdata.max()
-        mu = E/2.0/(1.0+v)
-        lamda = E*v/(1.0+v)/(1.0-2.0*v)
         # scipy.io.savemat('test_matdata.mat',{'test_matdata':matdata}) 
         FNO_C,displacement, dis_FNO = homo3D_revised(lx,ly,lz,lamda,mu,matdata) # dis_FNO是和输入对应的
         
         FNO_C = FNO_C * P
         # np.fill_diagonal(FNO_C, np.diag(FNO_C) * np.diag(P_c))
         # 看一看和reshape后的GT位移场的差距
-        # dis_filename = r'data_homogenization/matlab_data/FEM results/res64/601-1200/displacement_%i.mat' % i
+        # dis_filename = r'data_homogenization/matlab_data/FEM results/res128/601-1200/displacement_%i.mat' % i
         # dis_path = os.path.join(root_file_path,dis_filename)
         # dis_GT = np.float64(scipy.io.loadmat(dis_path)['real_X'])
-        # output_data = np.swapaxes(dis_GT.reshape(64, 64, 64, -1), 1, 2) # 第二维度和第三维度换了一下才和GT对应上
-        # output_data = dis_GT.reshape(64, 64, 64, -1)
+        # output_data = np.swapaxes(dis_GT.reshape(128, 128, 128, -1), 1, 2) # 第二维度和第三维度换了一下才和GT对应上
+        # output_data = dis_GT.reshape(128, 128, 128, -1)
         # error_d = []
         # for j in range(18):
         #     error_d.append(np.linalg.norm(output_data[..., j] - dis_FNO[..., j])/np.linalg.norm(output_data[...,j]))
@@ -503,7 +495,7 @@ if __name__ == "__main__":
         end_time = time.perf_counter()
         print('Running time: %s Seconds'%(end_time-start_time))
         print('model %s has been completed !!!'%(i))
-        GT_C_path = r'data_homogenization/matlab_data/FEM results/res64/601-1200_material/CH_'+str(i)+'.mat'
+        GT_C_path = r'data_homogenization/matlab_data/FEM results/res128/601-1200/CH_'+str(i)+'.mat'
 
         GT_C = np.float64(scipy.io.loadmat(GT_C_path)['Homoed_C'])
         
@@ -514,8 +506,8 @@ if __name__ == "__main__":
         error_thermal.append(FNO_C/GT_C)
         print(r'FNO model for prediction of C: error %.4f' % error_C)
         
-    np.save('./outdata/res64_data_type3_material/error_C_data601_1200.npy', error_list)
-    np.save('./outdata/res64_data_type3_material/error_thermal_data601_1200.npy', error_thermal)
+    np.save('./outdata/res128_data_type3/error_C_data601_1200.npy', error_list)
+    np.save('./outdata/res128_data_type3/error_thermal_data601_1200.npy', error_thermal)
     
 
     # 生成一个6x6的随机矩阵作为示例数据
@@ -538,6 +530,6 @@ if __name__ == "__main__":
     # 添加标题和坐标轴标签
     plt.title('Error of homogenization')
     plt.xlabel('Tensor of elastic constants')
-    plt.savefig('./Image/TPMS_forward_res64_type3_material/modulus_homo_res64_data601_1200.png', dpi=1000)
+    plt.savefig('./Image/TPMS_forward_res128_type3/modulus_homo_res128_data601_1200.png', dpi=1000)
     # 显示图形
     plt.show()

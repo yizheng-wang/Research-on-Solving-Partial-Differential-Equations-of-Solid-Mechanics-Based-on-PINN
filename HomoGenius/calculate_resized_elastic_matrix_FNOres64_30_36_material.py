@@ -1,3 +1,5 @@
+from joblib import Parallel, delayed
+import multiprocessing # 并行化，为了后面的C
 import numpy as np
 import scipy.io
 import scipy.sparse
@@ -289,26 +291,31 @@ def homo3D_revised(lx,ly,lz,lamda,mu,voxel):
     dofVector[0::3] = 3*nnpArray.reshape(nn,1)-2
     dofVector[1::3] = 3*nnpArray.reshape(nn,1)-1
     dofVector[2::3] = 3*nnpArray.reshape(nn,1)
-    for i in range(len(edof)):
-        for j in range(len(edof[0])):
-            edof[i,j] = dofVector[int(edof[i,j])-1]
+    
+    dofVector = dofVector.flatten()
+    edof = dofVector[edof-1].astype(int)
+    
     
     material = voxel/v
     lamda = lamda*material
     mu = mu*material
     
         
-    activedofs = []
-    count = 0
-    for k in range(voxel.shape[2]):
-        for j in range(voxel.shape[1]):
-            for i in range(voxel.shape[0]):
-                if voxel[i,j,k]>0.0:
-                    activedofs.append(edof[count,:])
-                count = count + 1
-    activedofs = np.sort(np.unique(np.array(activedofs)))
-    activedofs = activedofs.astype(int) # 这个activedofs是用来掩码的
+    voxel_flat = voxel.ravel(order='F')
     
+    # 找出所有大于0的元素的索引
+    active_indices = np.where(voxel_flat > 0.0)[0]
+    
+    # 使用这些索引从edof中获取对应的行
+    activedofs = edof[active_indices, :]
+    
+    activedofs = np.sort(np.unique(activedofs))
+    # activedofs = activedofs.astype(int) # 这个activedofs是用来掩码的
+    
+
+
+
+
 
     X0 = np.zeros((nel,24,6))
     X0_e = np.zeros((24,6))
@@ -343,33 +350,41 @@ def homo3D_revised(lx,ly,lz,lamda,mu,voxel):
     X_FNO_invreshape_active = np.zeros(X_FNO_invreshape.shape)
     X_FNO_invreshape_active[activedofs[3:]-1] = X_FNO_invreshape[activedofs[3:]-1]
     
-    X_FNO_active = X_FNO_invreshape_active.reshape(64,64,64,18)
+    X_FNO_active = X_FNO_invreshape_active.reshape(64, 64, 64, 18)
     
 
     
-    X_FNO_active = X_FNO_active.reshape(-1, 6)
-    dX_FNO = np.zeros((nel,24,6))
-    for k in range(6):
-        for i in range(nel):
-            for j in range(24):
-                dX_FNO[i,j,k] = X_FNO_active[edof[i,j]-1,k] # X才是有限元计算的，看来dX是需要赛的，有些
-                
-    CH_FNO = np.zeros((6,6))
+    X_FNO_active = X_FNO_active.reshape(-1, 6) #大小是6291456，6
+ 
+    edof_flat = edof.flatten() - 1  # 如果edof不是从0开始的索引，则需要调整
+    X_FNO_active_selected = X_FNO_active[edof_flat]                
+    dX_FNO = X_FNO_active_selected.reshape(nel, 24, 6)
+ 
+    
+
+    start_c = time.time()
+    #改成并行化
+    def cal_c(i, j):
+        sum_L_FNO = np.dot((X0[:,:,i]-dX_FNO[:,:,i]),keLambda) * (X0[:,:,j]-dX_FNO[:,:,j]) # lambda算出来的E
+        sum_M_FNO = np.dot((X0[:,:,i]-dX_FNO[:,:,i]),keMu) * (X0[:,:,j]-dX_FNO[:,:,j]) #mu算出来的E
+        sum_L_FNO = sum_L_FNO.sum(axis=1)
+        sum_L_FNO = sum_L_FNO.reshape(nelx,nely,nelz)
+        sum_L_FNO = sum_L_FNO.T
+        sum_M_FNO = sum_M_FNO.sum(axis=1)
+        sum_M_FNO = sum_M_FNO.reshape(nelx,nely,nelz)
+        sum_M_FNO = sum_M_FNO.T
+        return (lamda*sum_L_FNO+mu*sum_M_FNO).sum()*1.0/volume
+    c_list = []
     for i in range(6):
         for j in range(6):
-            
-            sum_L_FNO = np.dot((X0[:,:,i]-dX_FNO[:,:,i]),keLambda) * (X0[:,:,j]-dX_FNO[:,:,j])
-            sum_M_FNO = np.dot((X0[:,:,i]-dX_FNO[:,:,i]),keMu) * (X0[:,:,j]-dX_FNO[:,:,j])
-            sum_L_FNO = sum_L_FNO.sum(axis=1)
-            sum_L_FNO = sum_L_FNO.reshape(nelx,nely,nelz)
-            sum_L_FNO = sum_L_FNO.T
-            sum_M_FNO = sum_M_FNO.sum(axis=1)
-            sum_M_FNO = sum_M_FNO.reshape(nelx,nely,nelz)
-            sum_M_FNO = sum_M_FNO.T
-            CH_FNO[i,j] = (lamda*sum_L_FNO+mu*sum_M_FNO).sum()*1.0/volume
-            # temp_L[:,:,:,i,j] = sum_L
-            # temp_M[:,:,:,i,j] = sum_M
+            c_list.append([i,j])
+    num_cores = multiprocessing.cpu_count()
+    results = Parallel(n_jobs=num_cores)(delayed(cal_c)(*i) for i in c_list)
+    CH_FNO = np.array(results).reshape(6,6)
+              
+
     end = time.time()
+    print('The time of  CH by FNO is %f' % (end-start_c))
     print('The time of homonization CH by FNO is %f' % (end-start))
     return  CH_FNO, X_FNO_active, X_FNO
 
