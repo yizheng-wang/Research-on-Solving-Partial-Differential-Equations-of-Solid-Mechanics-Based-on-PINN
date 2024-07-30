@@ -16,8 +16,8 @@ The detail is:
 [10.1016/j.cma.2022.115491](https://www.sciencedirect.com/science/article/pii/S0045782522005096?via%3Dihub#da1) submitted to CMAME, accept) 
 ![CENN_graphic_abstract](./CENN_graphic_abstract.png)
 
-4.DCEM: DCEM-PINNs: A deep complementary energy method for solid mechanics (paper:
-[Arxiv](https://arxiv.org/abs/2302.01538) submitted to IJNME, minor revision) 
+4.DCEM: DCEM: A deep complementary energy method for solid mechanics (paper:
+[Arxiv](https://arxiv.org/abs/2302.01538)  IJNME, accept) 
 ![DCEM_graphic_abstract](./DCEM_graphic_abstract.png)
 
 
