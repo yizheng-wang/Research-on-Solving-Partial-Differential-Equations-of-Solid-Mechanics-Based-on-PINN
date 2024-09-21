@@ -17,7 +17,7 @@ The detail is:
 ![CENN_graphic_abstract](./CENN_graphic_abstract.png)
 
 4.DCEM: DCEM: A deep complementary energy method for solid mechanics (paper:
-[Arxiv](https://arxiv.org/abs/2302.01538)  IJNME, accept) 
+[IJNME](https://onlinelibrary.wiley.com/doi/full/10.1002/nme.7585)) 
 ![DCEM_graphic_abstract](./DCEM_graphic_abstract.png)
 
 
