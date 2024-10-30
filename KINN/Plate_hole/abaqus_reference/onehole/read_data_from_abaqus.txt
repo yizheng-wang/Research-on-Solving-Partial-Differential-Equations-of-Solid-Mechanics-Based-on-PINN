@@ -1,0 +1,13 @@
+import numpy as np
+from abaqus import *
+from abaqusConstants import *
+
+coo = np.load('C:/Users/admin/OneDrive/KINN/src_KINN/Plate_hole/abaqus_reference/onehole/coordinate_inverse.npy')  
+y=coo.tolist()
+z=[tuple(me) for me in y]
+z=tuple(z) # TUPLE是abaqus合法的输入
+path1 = session.Path(name='path_1',type=2,expression=z)
+mydata_u1 = session.XYDataFromPath(path=path1,shape=UNDEFORMED,labelType=TRUE_DISTANCE,includeIntersections=False,name='mydata_u1')
+data_u1 = mydata_u1.data
+np_u1 = np.array(data_u1)
+np.save('C:/Users/admin/OneDrive/KINN/src_KINN/Plate_hole/abaqus_reference/onehole/MISES_inverse.npy', np_u1)

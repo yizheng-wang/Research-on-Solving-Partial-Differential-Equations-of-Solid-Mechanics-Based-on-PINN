@@ -16,10 +16,13 @@ The detail is:
 [10.1016/j.cma.2022.115491](https://www.sciencedirect.com/science/article/pii/S0045782522005096?via%3Dihub#da1) submitted to CMAME, accept) 
 ![CENN_graphic_abstract](./CENN_graphic_abstract.png)
 
-4.DCEM: DCEM: A deep complementary energy method for solid mechanics (paper:
+4.DCEM: A deep complementary energy method for solid mechanics (paper:
 [IJNME](https://onlinelibrary.wiley.com/doi/full/10.1002/nme.7585)) 
 ![DCEM_graphic_abstract](./DCEM_graphic_abstract.png)
 
+5.KINN: DCEM: A physics-informed deep learning framework for solving forward and inverse problems based on KAN (paper:
+[CMAME](https://arxiv.org/pdf/2406.11045)) 
+![KINN_graphic_abstract](./KINN_graphic_abstract.png)
 
 Recently, I am doing the neural operator with computational mechanics, there are some interesting works:
 
