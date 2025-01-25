@@ -15,7 +15,7 @@ D_out = 2
 lr = 0.0001
 # ------------------------------ material parameter -------------------------------------------------
 model_energy = 'NeoHookean2D'
-E = 1
+E = 1000
 nu = 0.3
 param_c1 = 630
 param_c2 = -1.2
