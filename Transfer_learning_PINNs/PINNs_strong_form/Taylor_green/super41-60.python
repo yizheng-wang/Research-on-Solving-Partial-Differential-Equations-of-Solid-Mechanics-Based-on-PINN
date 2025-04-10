@@ -1,0 +1,10 @@
+#!/bin/bash
+#SBATCH -J l_r_40_60
+#SBATCH -p gnall
+#SBATCH -N 1
+#SBATCH -o stdout.Green_vortex_PINN_lora_r_40_60
+#SBATCH -e stderr.Green_vortex_PINN_lora_r_40_60
+#SBATCH --no-requeue
+#SBATCH --gres=gpu:1 #根据需要设置，只使用CPU此行省略
+ 
+python Green_vortex_arbitatary_w_PINN_lora40to60.py #具体的python命令

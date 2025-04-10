@@ -1,0 +1,10 @@
+#!/bin/bash
+#SBATCH -J b_l21-40
+#SBATCH -p gnall
+#SBATCH -N 1
+#SBATCH -o stdout.beam_lora21to40
+#SBATCH -e stderr.beam_lora21to40
+#SBATCH --no-requeue
+#SBATCH --gres=gpu:1 #根据需要设置，只使用CPU此行省略
+ 
+python Beam2D_FGM_Trip_MLP_lora_r21to40.py #具体的python命令

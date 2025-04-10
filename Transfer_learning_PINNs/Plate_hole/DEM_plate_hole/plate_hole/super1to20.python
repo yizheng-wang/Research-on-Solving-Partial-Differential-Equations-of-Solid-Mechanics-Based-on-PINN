@@ -1,0 +1,12 @@
+#!/bin/bash
+#SBATCH -J plate_1-20
+#SBATCH -p gnall
+#SBATCH -N 1
+#SBATCH -o stdout.plate_lora1to20
+#SBATCH -e stderr.plate_lora1to20
+#SBATCH --no-requeue
+#SBATCH --gres=gpu:1 #根据需要设置，只使用CPU此行省略
+ 
+python Plate_hole_DEM_triangle_elipse2circle_lora_r1to20.py 
+python Plate_hole_DEM_triangle_circle2elipse_lora_r1to20.py 
+#具体的python命令

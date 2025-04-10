@@ -1,0 +1,10 @@
+#!/bin/bash
+#SBATCH -J beam_lora
+#SBATCH -p gnall
+#SBATCH -N 1
+#SBATCH -o stdout.beam_lora
+#SBATCH -e stderr.beam_lora
+#SBATCH --no-requeue
+#SBATCH --gres=gpu:1 #根据需要设置，只使用CPU此行省略
+ 
+python run.py #具体的python命令
