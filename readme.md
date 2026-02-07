@@ -1,38 +1,72 @@
-# Research-on-Solving-Partial-Differential-Equations-of-Solid-Mechanics-Based-on-Physics-Informed-Neural Network
+# Research on Solving Partial Differential Equations of Solid Mechanics Based on Physics-Informed Neural Networks
 
+This repository contains part of the code from my master thesis, covering **Data-driven**, **DEM (Deep Energy Method)**, **CENN**, **DCEM**, **KINN**, as well as recent work on **Transfer Learning for PINNs**.
 
+---
 
+## Overview of Methods
 
+### 1. Data-driven
+Data-driven solving via PyTorch automatic differentiation (AD).
 
-This is the part code of my master thesis, including Data-driven, DEM (Deep Energy Method), CENN (Deep Energy method with subdomains), and DCEM (using complementary energy instead of potential energy).
+### 2. DEM (Deep Energy Method)
+Deep energy method based on the potential energy principle, applied to solid mechanics benchmarks.  
+Code is adapted from [dem_hyperelasticity](https://github.com/MinhNguyenIKM/dem_hyperelasticity).
 
-The detail is:
+### 3. CENN (Conservative Energy Neural Networks)
+Neural network approach based on conservative energy with subdomains.  
+- Paper: [*CMAME*](https://www.sciencedirect.com/science/article/pii/S0045782522005096?via%3Dihub#da1) (2022), doi: 10.1016/j.cma.2022.115491  
 
-1.Data-driven: familiar to the AD(Automatic Differientiation) in Pytorch
-
-2.DEM:Deep Learning Method with the application to the benchmark of the solid mechanics. (The code is revised from https://github.com/MinhNguyenIKM/dem_hyperelasticity)
-
-3.CENN:Conservative energy method based on neural networks with subdomains (paper:
-[10.1016/j.cma.2022.115491](https://www.sciencedirect.com/science/article/pii/S0045782522005096?via%3Dihub#da1) submitted to CMAME, accept) 
 ![CENN_graphic_abstract](./CENN_graphic_abstract.png)
 
-4.DCEM: A deep complementary energy method for solid mechanics (paper:
-[IJNME](https://onlinelibrary.wiley.com/doi/full/10.1002/nme.7585)) 
+### 4. DCEM (Deep Complementary Energy Method)
+Deep complementary energy method based on the complementary energy principle.  
+- Paper: [*IJNME*](https://onlinelibrary.wiley.com/doi/full/10.1002/nme.7585)  
+
 ![DCEM_graphic_abstract](./DCEM_graphic_abstract.png)
 
-5.KINN: DCEM: A physics-informed deep learning framework for solving forward and inverse problems based on KAN (paper:
-[CMAME](https://arxiv.org/pdf/2406.11045)) 
+### 5. KINN (KAN-based Physics-Informed Neural Networks)
+Physics-informed neural networks based on KAN for forward and inverse problems in solid mechanics.  
+- Paper: [*CMAME*](https://www.sciencedirect.com/science/article/abs/pii/S0045782524007722)  
+
 ![KINN_graphic_abstract](./KINN_graphic_abstract.png)
 
-Recently, I am doing the neural operator with computational mechanics, there are some interesting works:
+---
 
-1. HomoGenius: using neural operator to accelerate the prediction of the effective modulus in homogenization process. (paper: submitted to [Nature machine intelligence](https://www.researchsquare.com/article/rs-3994416/v1)
-![HOMO_graphic_abstract](./HOMO_graphic_abstract.png)
+## Recent Work: Transfer Learning for PINNs
 
-@author: yizheng wang (王一铮), 447650327@qq.com or wang-yz19@mails.tsinghua.edu.cn, wechat: 17326912090
+Applications of transfer learning to PINNs, including:
 
-I will keep updating it, if you find any problem, please contact me without any hesitation by email. Thank you !
+- **Taylor–Green vortex**: strong-form PINNs with LoRA fine-tuning, KINN full fine-tuning, etc.;
+- **Plate with hole**: geometry/parameter transfer (e.g. ellipse → circle) and error evolution;
+- **DEM beam**: neural operators (e.g. FNO) and data-driven beam problems.
 
-If it is helpful, please star me !
+-Paper: [*IJMSD*](https://onlinelibrary.wiley.com/doi/full/10.1002/msd2.70030)
 
-In future, I will expand PINN in solid mechanics. If you have any idea, we can do it together for great job!
+![transfer_graphic_abstract](./transfer_graphic_abstract.png)
+
+---
+
+## Repository Structure
+
+| Directory | Description |
+|-----------|-------------|
+| `data-driven/` | Data-driven (AD) code |
+| `DEM/` | Deep Energy Method |
+| `CENN/` | Conservative energy with subdomains (crack, Koch, etc.) |
+| `DCEM/` | Deep Complementary Energy Method |
+| `KINN/` | KAN-based networks; plate hole, crack, non-homogeneous, high-frequency examples |
+| `Transfer_learning_PINNs/` | Transfer learning (Taylor–Green, Plate_hole, DEM_beam, etc.) |
+
+---
+
+## Author & Contact
+
+**Author**: Yizheng Wang (王一铮)  
+Personal website: https://yizheng-wang.github.io/
+- Email: 447650327@qq.com or wang-yz19@tsinghua.org.cn
+- WeChat: 17326912090  
+
+I will keep updating the code and documentation. If you find any issues, please feel free to contact me by email. If this repository is helpful, a Star is appreciated.  
+
+I plan to continue extending PINN-related research in solid mechanics. Collaboration ideas are welcome.
